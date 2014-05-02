@@ -21,7 +21,13 @@ int _tmain(int argc, _TCHAR* argv[])
 		"@SimpleLoop:\n"
 		"subd        $01, $01, 1; decrement\n"
 		"jnzd        $01.ud0, @SimpleLoop; test and jump\n"
-		"stop        $01, 0xB;\n";
+		"stop        $01, 0xB;\n"
+		"stop        $00, 0\n";
+
+	std::vector<A256Cmd> program;
+	std::vector<u256> stack(1024 * 128);
+	std::vector<u64> cstack(1024 * 128);
+
 	try
 	{
 		if (argc > 1)
@@ -44,10 +50,12 @@ int _tmain(int argc, _TCHAR* argv[])
 			printf(text.c_str());
 		}
 		printf("Compiling...\n");
-		std::vector<A256Cmd> program = vm.compile(text);
+		program = vm.compile(text);
 		printf("%lld instructions generated.\n", program.size());
 		printf("Executing...\n");
 		vm.reg[0]._uq[0] = (u64)program.data();
+		vm.reg[0]._uq[2] = (u64)stack.data() + sizeof(stack[0]) * stack.size();
+		vm.reg[0]._uq[3] = (u64)cstack.data() + sizeof(cstack[0]) * cstack.size();
 		while (vm.execute());
 		printf("Program finished.\n");
 	}
@@ -76,6 +84,16 @@ int _tmain(int argc, _TCHAR* argv[])
 	{
 		printf("Error: %s\n", x.c_str());
 	}
+	catch (std::exception& x)
+	{
+		printf("Error: %s\n", x.what());
+	}
+	catch (...)
+	{
+		printf("Unknown error.\n");
+	}
+	printf("$NP = 0x%llx (program = 0x%llx, position = %lld)\n",
+		vm.reg[0]._uq[0], (u64)program.data(), (vm.reg[0]._uq[0] - (u64)program.data()) / sizeof(u64));
 	return 0;
 }
 

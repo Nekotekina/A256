@@ -157,7 +157,7 @@ struct A256Machine
 		}
 		default:
 		{
-			throw fmt::format(__FUNCTION__"(): invalid code 0x%x", code);
+			throw fmt::format(__FUNCTION__"(): invalid code 0x%x.", code);
 		}
 		}
 	}
@@ -604,17 +604,49 @@ struct A256Machine
 		fma_<s64>();
 	}
 
-	template<typename T>
-	void call_()
+	void call() // 0x0048: jump relative using call stack (call r.mask, imm32)
 	{
-
+		for (u32 i = 0; i < 4; i++)
+		{
+			switch ((op.op1i.r_mask >> (i * 2)) & 3)
+			{
+			case 0: break;
+			case 3:
+			{
+				reg[op.op1i.r]._uq[i] -= sizeof(u64);
+				*(u64*)(reg[op.op1i.r]._uq[i]) = reg[0]._uq[0];
+				break;
+			}
+			default: throw fmt::format(__FUNCTION__"(): partial stack pointer update.");
+			}
+		}
+		reg[0]._uq[0] += (s32)op.op1i.imm;
 	}
 
-	// 0x0048: jump using call stack
-
-	void ret() // 0x004f: return using call stack
+	void ret() // 0x004f: return using call stack (ret r.mask, imm32)
 	{
-
+		if (op.op1i.imm != 0)
+		{
+			throw fmt::format(__FUNCTION__"(): invalid immediate 0x%x.", op.op1i.imm);
+		}
+		for (u32 i = 0; i < 4; i++)
+		{
+			switch ((op.op1i.r_mask >> (i * 2)) & 3)
+			{
+			case 0: break;
+			case 3:
+			{
+				if (op.op1i.r_mask != (3 << (i * 2)))
+				{
+					throw fmt::format(__FUNCTION__"(): multiple stack pointer updates.");
+				}
+				reg[0]._uq[0] = *(u64*)(reg[op.op1i.r]._uq[i]);
+				reg[op.op1i.r]._uq[i] += sizeof(u64);
+				break;
+			}
+			default: throw fmt::format(__FUNCTION__"(): partial stack pointer update.");
+			}
+		}
 	}
 
 	template<typename T>
@@ -999,6 +1031,9 @@ struct A256Machine
 			REG(0x0046, fmad, itOp4_sign4);
 			REG(0x0047, fmaq, itOp4_sign4);
 
+			REG(0x0048, call, itOp1_m1_imm32);
+			REG(0x004f, ret, itOp1_m1_imm32);
+
 			REG(0x0050, andfs, itOp3_m1_bsc2);
 			REG(0x0051, andfd, itOp3_m1_bsc2);
 
@@ -1050,6 +1085,19 @@ struct A256Machine
 			REG(0x00bf, divuq, itOp3_m1_bsc2);
 #undef REG
 		}
+
+		const u16 find(void (A256Machine::*f)()) const
+		{
+			for (u32 i = 0; i <= max_num; i++)
+			{
+				if (func[i] == f)
+				{
+					return (u16)i;
+				}
+			}
+			throw fmt::format(__FUNCTION__"(): unregistered instruction.");
+		}
+
 	} instr;
 
 	std::vector<A256Cmd> compile(const std::string& text)
@@ -1940,11 +1988,53 @@ struct A256Machine
 				// generate jump to label
 				compiler.read_space();
 				A256Cmd jcmd;
-				jcmd.cmd = 0x2b; // jnzq
+				jcmd.cmd = instr.find(&A256Machine::jnzq);
 				jcmd.op1i.r = 0; // $00
 				jcmd.op1i.r_mask = 0xff;
 				jcmd.op1i.imm = compiler.read_imm32();
 				output.push_back(jcmd);
+				continue;
+			}
+			case 'c':
+			{
+				if ((pos + 1 == len) || text[pos + 1] != ' ') break;
+				pos++;
+				compiler.read_space();
+				// generate call to label
+				A256Cmd cmd;
+				cmd.cmd = instr.find(&A256Machine::call);
+				cmd.op1i.r = 0; // $00
+				cmd.op1i.r_mask = 0xc0; // $CS
+				cmd.op1i.imm = compiler.read_imm32();
+				output.push_back(cmd);
+				continue;
+			}
+			case 'r':
+			{
+				if ((pos + 1 == len) || text[pos + 1] != ' ') break;
+				pos++;
+				compiler.read_space();
+				// generate return
+				A256Cmd cmd;
+				cmd.cmd = instr.find(&A256Machine::ret);
+				cmd.op1i.r = 0; // $00
+				cmd.op1i.r_mask = 0xc0; // $CS
+				cmd.op1i.imm = compiler.read_imm32();
+				output.push_back(cmd);
+				continue;
+			}
+			case 's':
+			{
+				if ((pos + 1 == len) || text[pos + 1] != ' ') break;
+				pos++;
+				compiler.read_space();
+				// generate stop for register $00
+				A256Cmd cmd;
+				cmd.cmd = instr.find(&A256Machine::stop);
+				cmd.op1i.r = 0; // $00
+				cmd.op1i.r_mask = 0xff;
+				cmd.op1i.imm = compiler.read_imm32();
+				output.push_back(cmd);
 				continue;
 			}
 			default: break;
@@ -2116,14 +2206,14 @@ struct A256Machine
 			}
 			default:
 			{
-				printf("Unknown type of '%s'", instr.name[opcode]);
+				printf("Unknown type of '%s'.\n", instr.name[opcode]);
 				throw pos;
 			}
 			}
 
 			output.push_back(cmd);
 		}
-		output.push_back(A256Cmd({ 0, 0, 0, 0xef, 0xbe, 0xad, 0xde }));
+		output.push_back(A256Cmd({ instr.find(&A256Machine::stop), 0, 0, 0xef, 0xbe, 0xad, 0xde }));
 
 		// relocations:
 		for (auto& r : relocs)
