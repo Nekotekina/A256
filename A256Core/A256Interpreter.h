@@ -33,7 +33,7 @@ struct A256Machine
 		memset(&reg, 0, sizeof(reg));
 	}
 
-	void stop() // 0x0000: interrupt (stop r.bsc, imm32)
+	void stop() // interrupt (stop r.bsc, imm32)
 	{
 		switch (s32 code = op.op1i.imm)
 		{
@@ -162,13 +162,13 @@ struct A256Machine
 		}
 	}
 
-	void set() // 0x0001: set register to immediate (set r.mask, imm32)
+	void set() // set register to immediate (set r.mask, imm32)
 	{
 		A256Reg res = A256Reg::set(op.op1i.imm);
 		RSAVE1(reg[op.op1i.r], res, op.op1i.r_mask);
 	}
 
-	void mmovb() // 0x0002: mov selected bytes using immediate mask (mmovb r, a, imm32)
+	void mmovb() // mov selected bytes using immediate mask (mmovb r, a, imm32)
 	{
 		for (u32 i = 0; i < 32; i++)
 		{
@@ -179,7 +179,7 @@ struct A256Machine
 		}
 	}
 
-	void mswapb() // 0x0003: swap selected bytes using immediate (mswapb r, a, imm32)
+	void mswapb() // swap selected bytes using immediate (mswapb r, a, imm32)
 	{
 		for (u32 i = 0; i < 32; i++)
 		{
@@ -192,7 +192,7 @@ struct A256Machine
 		}
 	}
 
-	void ld() // 0x0004: load from memory (ld r.mask, a.bsc, b.bsc)
+	void ld() // load from memory (ld r.mask, a.bsc, b.bsc)
 	{
 		A256Reg arg1 = reg[op.op3.a].bsc1<u64>(op.op3.a_mask, op.op3.a);
 		A256Reg arg2 = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b);
@@ -201,7 +201,7 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], *data, op.op3.r_mask);
 	}
 
-	void st() // 0x0005: store to memory (st r.mask, a.bsc, b.bsc)
+	void st() // store to memory (st r.mask, a.bsc, b.bsc)
 	{
 		A256Reg arg1 = reg[op.op3.a].bsc1<u64>(op.op3.a_mask, op.op3.a);
 		A256Reg arg2 = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b);
@@ -210,14 +210,14 @@ struct A256Machine
 		RSAVE1(*data, reg[op.op3.r], op.op3.r_mask);
 	}
 
-	void ldr() // 0x0006: load relative from memory (ldr r.mask, imm32)
+	void ldr() // load relative from memory (ldr r.mask, imm32)
 	{
 		u64 addr = reg[0]._uq[0] + (s32)op.op1i.imm;
 		A256Reg* data = (A256Reg*)addr;
 		RSAVE1(reg[op.op3.r], *data, op.op1i.r_mask);
 	}
 
-	void str() // 0x0007: store relative to memory (str r.mask, imm32)
+	void str() // store relative to memory (str r.mask, imm32)
 	{
 		u64 addr = reg[0]._uq[0] + (s32)op.op1i.imm;
 		A256Reg* data = (A256Reg*)addr;
@@ -240,22 +240,22 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
-	void cmovb() // 0x0008: conditional move byte if not zero
+	void cmovb()
 	{
 		cmov_<s8>();
 	}
 
-	void cmovw() // 0x0009: conditional move word if not zero
+	void cmovw()
 	{
 		cmov_<s16>();
 	}
 
-	void cmovd() // 0x000a: conditional move dword if not zero
+	void cmovd()
 	{
 		cmov_<s32>();
 	}
 
-	void cmovq() // 0x000b: conditional move qword if not zero
+	void cmovq()
 	{
 		cmov_<s64>();
 	}
@@ -276,28 +276,28 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
-	void cmovzb() // 0x000c: conditional move byte if zero
+	void cmovzb()
 	{
 		cmovz_<s8>();
 	}
 
-	void cmovzw() // 0x000d: conditional move word if zero
+	void cmovzw()
 	{
 		cmovz_<s16>();
 	}
 
-	void cmovzd() // 0x000e: conditional move dword if zero
+	void cmovzd()
 	{
 		cmovz_<s32>();
 	}
 
-	void cmovzq() // 0x000f: conditional move qword if zero 
+	void cmovzq()
 	{
 		cmovz_<s64>();
 	}
 
 	template<typename T>
-	void add_() // basic add (add* r.mask, a.bsc, b.bsc)
+	void add_() // addition (add* r.mask, a.bsc, b.bsc)
 	{
 		A256Reg arg1 = reg[op.op3.a].bsc1<T>(op.op3.a_mask, op.op3.a);
 		A256Reg arg2 = reg[op.op3.b].bsc1<T>(op.op3.b_mask, op.op3.b);
@@ -309,38 +309,38 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
-	void addfs() // 0x0010: add float
+	void addfs()
 	{
 		add_<f32>();
 	}
 
-	void addfd() // 0x0011: add double
+	void addfd()
 	{
 		add_<f64>();
 	}
 
-	void addb() // 0x0014: add byte
+	void addb()
 	{
 		add_<s8>();
 	}
 
-	void addw() // 0x0015: add word
+	void addw()
 	{
 		add_<s16>();
 	}
 
-	void addd() // 0x0016: add dword
+	void addd()
 	{
 		add_<s32>();
 	}
 
-	void addq() // 0x0017: add qword
+	void addq()
 	{
 		add_<s64>();
 	}
 
 	template<typename T, typename Timm>
-	void add_i(const Timm& imm) // basic add immediate (addfsi r.mask, imm32)
+	void add_i(const Timm& imm) // add immediate (addfsi r.mask, imm32)
 	{
 		A256Reg result = reg[op.op1i.r];
 		A256Reg arg = A256Reg::set<Timm>(imm);
@@ -351,43 +351,43 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
-	void addfsi() // 0x0018: add single float immediate 
+	void addfsi() // add single float immediate 
 	{
 		add_i<f32, f32>((f32&)op.op1i.imm);
 	}
 
-	void addfdi() // 0x0019: add double float from single immediate
+	void addfdi() // add double float from single immediate
 	{
 		add_i<f64, f32>((f32&)op.op1i.imm);
 	}
 
-	void addbi() // 0x001a: add packed 4-byte immediate (addbi r.mask, imm8, imm8, imm8, imm8)
+	void addbi() // add packed 4-byte immediate (addbi r.mask, imm8, imm8, imm8, imm8)
 	{
 		add_i<s8, u32>(op.op1i.imm);
 	}
 
-	void addwi() // 0x001b: add packed 2-word immediate (addwi r.mask, imm16, imm16)
+	void addwi() // add packed 2-word immediate (addwi r.mask, imm16, imm16)
 	{
 		add_i<s16, u32>(op.op1i.imm);
 	}
 
-	void adddi() // 0x001c: add dword immediate
+	void adddi() // add dword immediate
 	{
 		add_i<s32, u32>(op.op1i.imm);
 	}
 
-	void addqip() // 0x001d: add lowpart quadword positive immediate (addqip r.mask, imm32p)
+	void addqip() // add lowpart quadword positive immediate (addqip r.mask, imm32p)
 	{
 		add_i<s64, u64>(op.op1i.imm);
 	}
 
-	void addqin() // 0x001e: add lowpart quadword negative immediate (addqin r.mask, imm32n)
+	void addqin() // add lowpart quadword negative immediate (addqin r.mask, imm32n)
 	{
 		add_i<s64, u64>(~0ull & op.op1i.imm);
 	}
 
 	template<typename T>
-	void sub_() // basic sub (sub* r.mask, a.bsc, b.bsc)
+	void sub_() // subtract (sub* r.mask, a.bsc, b.bsc)
 	{
 		A256Reg arg1 = reg[op.op3.a].bsc1<T>(op.op3.a_mask, op.op3.a);
 		A256Reg arg2 = reg[op.op3.b].bsc1<T>(op.op3.b_mask, op.op3.b);
@@ -399,38 +399,38 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
-	void subfs() // 0x0020: sub float
+	void subfs()
 	{
 		sub_<f32>();
 	}
 
-	void subfd() // 0x0021: sub double
+	void subfd()
 	{
 		sub_<f64>();
 	}
 
-	void subb() // 0x0024: sub byte
+	void subb()
 	{
 		sub_<s8>();
 	}
 
-	void subw() // 0x0025: sub word
+	void subw()
 	{
 		sub_<s16>();
 	}
 
-	void subd() // 0x0026: sub dword
+	void subd()
 	{
 		sub_<s32>();
 	}
 
-	void subq() // 0x0027: sub qword
+	void subq()
 	{
 		sub_<s64>();
 	}
 
 	template<typename T>
-	void jnz_() // jump relative if not zero (jnz* a.bsc, imm32)
+	void jnz_() // jump relative if not zero elements (jnz* a.bsc, imm32)
 	{
 		A256Reg arg1 = reg[op.op1i.r].bsc1<T>(op.op1i.r_mask, op.op1i.r);
 		for (u32 i = 0; i < 32 / sizeof(T); i++)
@@ -443,38 +443,38 @@ struct A256Machine
 		}
 	}
 
-	void jnzfs() // 0x0028: jump relative if not zero single floats
+	void jnzfs()
 	{
 		jnz_<f32>();
 	}
 
-	void jnzfd() // 0x0029: jump relative if not zero double floats
+	void jnzfd()
 	{
 		jnz_<f64>();
 	}
 
-	void jnzb() // 0x002c: jump relative if not zero bytes
+	void jnzb()
 	{
 		jnz_<s8>();
 	}
 
-	void jnzw() // 0x002d: jump relative if not zero words
+	void jnzw()
 	{
 		jnz_<s16>();
 	}
 
-	void jnzd() // 0x002e: jump relative if not zero dwords
+	void jnzd()
 	{
 		jnz_<s32>();
 	}
 
-	void jnzq() // 0x002f: jump relative if not zero qwords
+	void jnzq()
 	{
 		jnz_<s64>();
 	}
 
 	template<typename T>
-	void mul_() // basic multiply (sub* r.mask, a.bsc, b.bsc)
+	void mul_() // multiply (sub* r.mask, a.bsc, b.bsc)
 	{
 		A256Reg arg1 = reg[op.op3.a].bsc1<T>(op.op3.a_mask, op.op3.a);
 		A256Reg arg2 = reg[op.op3.b].bsc1<T>(op.op3.b_mask, op.op3.b);
@@ -486,38 +486,38 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
-	void mulfs() // 0x0030: mul float
+	void mulfs()
 	{
 		mul_<f32>();
 	}
 
-	void mulfd() // 0x0031: mul double (mulfd r.mask, a.bsc, b.bsc)
+	void mulfd()
 	{
 		mul_<f64>();
 	}
 
-	void mulb() // 0x0034: mul byte (mulb r.mask, a.bsc, b.bsc)
+	void mulb()
 	{
 		mul_<s8>();
 	}
 
-	void mulw() // 0x0035: mul word (mulw r.mask, a.bsc, b.bsc)
+	void mulw()
 	{
 		mul_<s16>();
 	}
 
-	void muld() // 0x0036: mul dword (muld r.mask, a.bsc, b.bsc)
+	void muld()
 	{
 		mul_<s32>();
 	}
 
-	void mulq() // 0x0037: mul qword (mulq r.mask, a.bsc, b.bsc)
+	void mulq()
 	{
 		mul_<s64>();
 	}
 
 	template<typename T>
-	void jz_() // jump relative if zero (jz* a.bsc, imm32)
+	void jz_() // jump relative if zero elements (jz* a.bsc, imm32)
 	{
 		A256Reg arg1 = reg[op.op1i.r].bsc1<T>(op.op1i.r_mask, op.op1i.r);
 		for (u32 i = 0; i < 32 / sizeof(T); i++)
@@ -530,32 +530,32 @@ struct A256Machine
 		reg[0]._uq[0] += (s32)op.op1i.imm;
 	}
 
-	void jzfs() // 0x0038: jump relative if zero single floats
+	void jzfs()
 	{
 		jz_<f32>();
 	}
 
-	void jzfd() // 0x0039: jump relative if zero double floats
+	void jzfd()
 	{
 		jz_<f64>();
 	}
 
-	void jzb() // 0x003c: jump relative if zero bytes
+	void jzb()
 	{
 		jz_<s8>();
 	}
 
-	void jzw() // 0x003d: jump relative if zero words
+	void jzw()
 	{
 		jz_<s16>();
 	}
 
-	void jzd() // 0x003e: jump relative if zero dwords
+	void jzd()
 	{
 		jz_<s32>();
 	}
 
-	void jzq() // 0x003f: jump relative if zero qwords
+	void jzq()
 	{
 		jz_<s64>();
 	}
@@ -574,37 +574,37 @@ struct A256Machine
 		RSAVE1(reg[op.op4.r], result.bsign1<T>(op.op4.arg_mask), op.op4.r_mask);
 	}
 
-	void fmafs() // 0x0040: multiply and add single float
+	void fmafs()
 	{
 		fma_<f32>();
 	}
 
-	void fmafd() // 0x0041: multiply and add double float
+	void fmafd()
 	{
 		fma_<f64>();
 	}
 
-	void fmab() // 0x0044: multiply and add byte
+	void fmab()
 	{
 		fma_<s8>();
 	}
 
-	void fmaw() // 0x0045: multiply and add word
+	void fmaw()
 	{
 		fma_<s16>();
 	}
 
-	void fmad() // 0x0046: multiply and add dword
+	void fmad()
 	{
 		fma_<s32>();
 	}
 
-	void fmaq() // 0x0047: multiply and add qword
+	void fmaq()
 	{
 		fma_<s64>();
 	}
 
-	void call() // 0x0048: jump relative using call stack (call r.mask, imm32)
+	void call() // jump relative using call stack (call r.mask, imm32)
 	{
 		for (u32 i = 0; i < 4; i++)
 		{
@@ -623,7 +623,7 @@ struct A256Machine
 		reg[0]._uq[0] += (s32)op.op1i.imm;
 	}
 
-	void ret() // 0x004f: return using call stack (ret r.mask, imm32)
+	void ret() // return using call stack (ret r.mask, imm32)
 	{
 		if (op.op1i.imm != 0)
 		{
@@ -658,32 +658,32 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
-	void andfs() // 0x0050: bitwise and single float
+	void andfs()
 	{
 		and_<f32>();
 	}
 
-	void andfd() // 0x0051: bitwise and double float
+	void andfd()
 	{
 		and_<f64>();
 	}
 
-	void andb() // 0x0054: bitwise and byte
+	void andb()
 	{
 		and_<s8>();
 	}
 
-	void andw() // 0x0055: bitwise and word
+	void andw()
 	{
 		and_<s16>();
 	}
 
-	void andd() // 0x0056: bitwise and dword
+	void andd()
 	{
 		and_<s32>();
 	}
 
-	void andq() // 0x0057: bitwise and qword
+	void andq()
 	{
 		and_<s64>();
 	}
@@ -691,25 +691,25 @@ struct A256Machine
 	template<typename T>
 	void push_() // push value onto stack (push* v.bsc, a.bsc, b.bsc)
 	{
-
+		// TODO
 	}
 
-	void pushd() // 0x005a: push dword
+	void pushd()
 	{
 		push_<u32>();
 	}
 
-	void pushq() // 0x005b: push qword
+	void pushq()
 	{
 		push_<u64>();
 	}
 
-	void pushdq() // 0x005c: push double qword
+	void pushdq()
 	{
 		push_<u128>();
 	}
 
-	void push() // 0x005d: push the whole register
+	void push()
 	{
 		push_<u256>();
 	}
@@ -723,32 +723,32 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
-	void orfs() // 0x0060: bitwise or single float
+	void orfs()
 	{
 		or_<f32>();
 	}
 
-	void orfd() // 0x0061: bitwise or double float
+	void orfd()
 	{
 		or_<f64>();
 	}
 
-	void orb() // 0x0064: bitwise or byte
+	void orb()
 	{
 		or_<s8>();
 	}
 
-	void orw() // 0x0065: bitwise or word
+	void orw()
 	{
 		or_<s16>();
 	}
 
-	void ord() // 0x0066: bitwise or dword
+	void ord()
 	{
 		or_<s32>();
 	}
 
-	void orq() // 0x0067: bitwise or qword
+	void orq()
 	{
 		or_<s64>();
 	}
@@ -756,25 +756,25 @@ struct A256Machine
 	template<typename T>
 	void pop_() // pop value from stack (pop* r.mask, a.bsc, b.bsc)
 	{
-
+		// TODO
 	}
 
-	void popd() // 0x006a: pop dword
+	void popd()
 	{
 		pop_<u32>();
 	}
 
-	void popq() // 0x006b: pop qword
+	void popq()
 	{
 		pop_<u64>();
 	}
 
-	void popdq() // 0x006c: pop double qword
+	void popdq()
 	{
 		pop_<u128>();
 	}
 
-	void pop() // 0x006d: pop the whole register
+	void pop()
 	{
 		pop_<u256>();
 	}
@@ -788,42 +788,42 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
-	void xorfs() // 0x0070: bitwise xor single float
+	void xorfs()
 	{
 		xor_<f32>();
 	}
 
-	void xorfd() // 0x0071: bitwise xor double float
+	void xorfd()
 	{
 		xor_<f64>();
 	}
 
-	void xorb() // 0x0074: bitwise xor byte
+	void xorb()
 	{
 		xor_<s8>();
 	}
 
-	void xorw() // 0x0075: bitwise xor word
+	void xorw()
 	{
 		xor_<s16>();
 	}
 
-	void xord() // 0x0076: bitwise xor dword
+	void xord()
 	{
 		xor_<s32>();
 	}
 
-	void xorq() // 0x0077: bitwise xor qword
+	void xorq()
 	{
 		xor_<s64>();
 	}
 
-	void shufb() // 0x0080: basic shuffle bytes (shufb r.mask, a.bsc, b.bsc)
+	void shufb() // basic shuffle bytes (shufb r.mask, a.bsc, b.bsc)
 	{
 		// TODO
 	}
 
-	void shufbx() // 0x0081: advanced shuffle bytes (shufbx r, arg0, arg1, arg2, arg3, arg4)
+	void shufbx() // advanced shuffle bytes (shufbx r, arg0, arg1, arg2, arg3, arg4)
 	{
 		A256Reg mask = reg[op.op6.arg[0]];
 		A256Reg data[4];
@@ -850,7 +850,7 @@ struct A256Machine
 
 	}
 
-	// 0x0090: unpk*
+	// 0x0090: unpk* (TODO)
 
 	template<typename Tfrom, typename Tto>
 	void pack_()
@@ -858,7 +858,7 @@ struct A256Machine
 
 	}
 
-	// 0x00a0: pack*
+	// 0x00a0: pack* (TODO)
 
 	template<typename T>
 	void div_() // divide (div* r.mask, a.bsc, b.bsc)
@@ -873,54 +873,548 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
-	void divfs() // 0x00b0: divide single float
+	void divfs()
 	{
 		div_<f32>();
 	}
 
-	void divfd() // 0x00b1: divide double float
+	void divfd()
 	{
 		div_<f64>();
 	}
 
-	void divsb() // 0x00b4: divide signed byte
+	void divsb()
 	{
 		div_<s8>();
 	}
 
-	void divsw() // 0x00b5: divide signed word
+	void divsw()
 	{
 		div_<s16>();
 	}
 
-	void divsd() // 0x00b6: divide signed dword
+	void divsd()
 	{
 		div_<s32>();
 	}
 
-	void divsq() // 0x00b7: divide signed qword
+	void divsq()
 	{
 		div_<s64>();
 	}
 
-	void divub() // 0x00bc: divide unsigned byte
+	void divub()
 	{
 		div_<u8>();
 	}
 
-	void divuw() // 0x00bd: divide unsigned word
+	void divuw()
 	{
 		div_<u16>();
 	}
 
-	void divud() // 0x00be: divide unsigned dword
+	void divud()
 	{
 		div_<u32>();
 	}
 
-	void divuq() // 0x00bf: divide unsigned qword
+	void divuq()
 	{
 		div_<u64>();
+	}
+
+	template<typename Ta, typename T>
+	void rl_() // rotate left (rl* r.mask, a.bsc, b.bsc)
+	{
+		A256Reg arg = reg[op.op3.a].bsc1<Ta>(op.op3.a_mask, op.op3.a);
+		A256Reg rot = reg[op.op3.b].bsc1<T>(op.op3.b_mask, op.op3.b);
+		A256Reg result;
+		for (u32 i = 0; i < 32 / sizeof(T); i++)
+		{
+			const u8 r = (u8)rot.get<T>(i) & (8 * sizeof(T) - 1);
+			const T v = arg.get<T>(i);
+			result.get<T>(i) = r ? (v << r) | (v << (8 * sizeof(T) - r)) : v;
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void rlfs()
+	{
+		rl_<f32, u32>();
+	}
+
+	void rlfd()
+	{
+		rl_<f64, u64>();
+	}
+
+	void rldq()
+	{
+		A256Reg arg = reg[op.op3.a].bsc1<u64>(op.op3.a_mask, op.op3.a);
+		A256Reg rot = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b);
+		A256Reg result;
+		for (u32 j = 0; j < 4; j += 2)
+		{
+			const u8 qrot = (rot._uq[j] >> 6) & 1;
+			const u8 brot = rot._uq[j] & 63;
+			for (u32 i = 0; i < 2; i++)
+			{
+				result._uq[i + j] = (arg._uq[i ^ qrot + j] << brot) | (brot ? (arg._uq[i ^ qrot ^ 1 + j] >> (64 - brot)) : 0);
+			}
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void rlb()
+	{
+		rl_<s8, u8>();
+	}
+
+	void rlw()
+	{
+		rl_<s16, u16>();
+	}
+
+	void rld()
+	{
+		rl_<s32, u32>();
+	}
+
+	void rlq()
+	{
+		rl_<s64, u64>();
+	}
+
+	template<typename T>
+	void rlqq_() // rotate left the whole register (a) by (b) (rlqq* r.mask, a.bsc, b.bsc)
+	{
+		A256Reg arg = reg[op.op3.a].bsc1<T>(op.op3.a_mask, op.op3.a);
+		const u8 rot = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b)._ub[0];
+		const u8 qrot = rot >> 6;
+		const u8 brot = rot & 63;
+		A256Reg result;
+		for (u32 i = 0; i < 4; i++)
+		{
+			result._uq[i] = (arg._uq[(i - qrot) & 3] << brot) | (brot ? (arg._uq[(i - qrot - 1) & 3] >> (64 - brot)) : 0);
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void rlqqfs()
+	{
+		rlqq_<f32>();
+	}
+
+	void rlqqfd()
+	{
+		rlqq_<f64>();
+	}
+
+	void rlqqb()
+	{
+		rlqq_<s8>();
+	}
+
+	void rlqqw()
+	{
+		rlqq_<s16>();
+	}
+
+	void rlqqd()
+	{
+		rlqq_<s32>();
+	}
+
+	void rlqqq()
+	{
+		rlqq_<s64>();
+	}
+
+	template<typename Ta, typename T>
+	void shl_() // shift left (shl* r.mask, a.bsc, b.bsc)
+	{
+		A256Reg arg = reg[op.op3.a].bsc1<Ta>(op.op3.a_mask, op.op3.a);
+		A256Reg shift = reg[op.op3.b].bsc1<T>(op.op3.b_mask, op.op3.b);
+		A256Reg result;
+		for (u32 i = 0; i < 32 / sizeof(T); i++)
+		{
+			const T s = shift.get<T>(i);
+			const T v = arg.get<T>(i);
+			result.get<T>(i) = (s >= 8 * sizeof(T)) ? 0 : v << s;
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void shlfs()
+	{
+		shl_<f32, u32>();
+	}
+
+	void shlfd()
+	{
+		shl_<f64, u64>();
+	}
+
+	void shldq()
+	{
+		A256Reg arg = reg[op.op3.a].bsc1<u64>(op.op3.a_mask, op.op3.a);
+		A256Reg shift = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b);
+		A256Reg result;
+		for (u32 j = 0; j < 4; j += 2)
+		{
+			const u64 qshift = shift._uq[j] >> 6;
+			const u64 bshift = shift._uq[j] & 63;
+			for (u32 i = 0; i < 2; i++)
+			{
+				if (qshift > i)
+				{
+					result._uq[i + j] = 0;
+				}
+				else if (qshift == i)
+				{
+					result._uq[i + j] = (arg._uq[j] << bshift);
+				}
+				else
+				{
+					result._uq[i + j] = (arg._uq[i + j] << bshift) | (bshift ? (arg._uq[i + 1 + j] >> (64 - bshift)) : 0);
+				}
+			}
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void shlb()
+	{
+		shl_<s8, u8>();
+	}
+
+	void shlw()
+	{
+		shl_<s16, u16>();
+	}
+
+	void shld()
+	{
+		shl_<s32, u32>();
+	}
+
+	void shlq()
+	{
+		shl_<s64, u64>();
+	}
+
+	template<typename T>
+	void shlqq_() // shift left the whole register (shlqq* r.mask, a.bsc, b.bsc)
+	{
+		A256Reg arg = reg[op.op3.a].bsc1<T>(op.op3.a_mask, op.op3.a);
+		const u64 shift = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b)._uq[0];
+		const u64 qshift = shift >> 6;
+		const u64 bshift = shift & 63;
+		A256Reg result;
+		for (u32 i = 0; i < 4; i++)
+		{
+			if (qshift > i)
+			{
+				result._uq[i] = 0;
+			}
+			else if (qshift == i)
+			{
+				result._uq[i] = (arg._uq[0] << bshift);
+			}
+			else
+			{
+				result._uq[i] = (arg._uq[(i - qshift) & 3] << bshift) | (bshift ? (arg._uq[(i - qshift - 1) & 3] >> (64 - bshift)) : 0);
+			}
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void shlqqfs()
+	{
+		shlqq_<f32>();
+	}
+
+	void shlqqfd()
+	{
+		shlqq_<f64>();
+	}
+
+	void shlqqb()
+	{
+		shlqq_<s8>();
+	}
+
+	void shlqqw()
+	{
+		shlqq_<s16>();
+	}
+
+	void shlqqd()
+	{
+		shlqq_<s32>();
+	}
+
+	void shlqqq()
+	{
+		shlqq_<s64>();
+	}
+
+	template<typename Ta, typename T, typename Ts>
+	void sar_() // shift right arithmetical (replicating sign bit) (sar* r.mask, a.bsc, b.bsc)
+	{
+		A256Reg arg = reg[op.op3.a].bsc1<Ta>(op.op3.a_mask, op.op3.a);
+		A256Reg shift = reg[op.op3.b].bsc1<T>(op.op3.b_mask, op.op3.b);
+		A256Reg result;
+		for (u32 i = 0; i < 32 / sizeof(T); i++)
+		{
+			const T s = shift.get<T>(i);
+			const Ts v = arg.get<Ts>(i);
+			result.get<Ts>(i) = (s >= 8 * sizeof(T)) ? v >> (8 * sizeof(T) - 1) : v >> s;
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void sarfs()
+	{
+		sar_<f32, u32, s32>();
+	}
+
+	void sarfd()
+	{
+		sar_<f64, u64, s64>();
+	}
+
+	void sardq()
+	{
+		A256Reg arg = reg[op.op3.a].bsc1<u64>(op.op3.a_mask, op.op3.a);
+		A256Reg shift = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b);
+		A256Reg result;
+		for (u32 j = 0; j < 4; j += 2)
+		{
+			const u64 qshift = shift._uq[j] >> 6;
+			const u64 bshift = shift._uq[j] & 63;
+			for (u32 i = 0; i < 2; i++)
+			{
+				if (qshift + i > 1)
+				{
+					result._uq[i + j] = (arg._sq[1 + j] >> 63);
+				}
+				else if (qshift + i == 1)
+				{
+					result._uq[i + j] = (arg._sq[1 + j] >> bshift);
+				}
+				else
+				{
+					result._uq[i + j] = (arg._uq[i + j] >> bshift) | (bshift ? (arg._uq[i + 1 + j] << (64 - bshift)) : 0);
+				}
+			}
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void sarb()
+	{
+		sar_<s8, u8, s8>();
+	}
+
+	void sarw()
+	{
+		sar_<s16, u16, s16>();
+	}
+
+	void sard()
+	{
+		sar_<s32, u32, s32>();
+	}
+
+	void sarq()
+	{
+		sar_<s64, u64, s64>();
+	}
+
+	template<typename T>
+	void sarqq_() // shift right arithmetical the whole register (sarqq* r.mask, a.bsc, b.bsc)
+	{
+		A256Reg arg = reg[op.op3.a].bsc1<T>(op.op3.a_mask, op.op3.a);
+		const u64 shift = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b)._uq[0];
+		const u64 qshift = shift >> 6;
+		const u64 bshift = shift & 63;
+		A256Reg result;
+		for (u32 i = 0; i < 4; i++)
+		{
+			if (qshift + i > 3)
+			{
+				result._uq[i] = arg._sq[3] >> 63;
+			}
+			else if (qshift + i == 3)
+			{
+				result._uq[i] = (arg._sq[3] >> bshift);
+			}
+			else
+			{
+				result._uq[i] = (arg._uq[(i + qshift) & 3] >> bshift) | (bshift ? (arg._uq[(i + qshift + 1) & 3] << (64 - bshift)) : 0);
+			}
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void sarqqfs()
+	{
+		sarqq_<f32>();
+	}
+
+	void sarqqfd()
+	{
+		sarqq_<f64>();
+	}
+
+	void sarqqb()
+	{
+		sarqq_<s8>();
+	}
+
+	void sarqqw()
+	{
+		sarqq_<s16>();
+	}
+
+	void sarqqd()
+	{
+		sarqq_<s32>();
+	}
+
+	void sarqqq()
+	{
+		sarqq_<s64>();
+	}
+
+	template<typename Ta, typename T>
+	void shr_() // shift right logical (shr* r.mask, a.bsc, b.bsc)
+	{
+		A256Reg arg = reg[op.op3.a].bsc1<Ta>(op.op3.a_mask, op.op3.a);
+		A256Reg shift = reg[op.op3.b].bsc1<T>(op.op3.b_mask, op.op3.b);
+		A256Reg result;
+		for (u32 i = 0; i < 32 / sizeof(T); i++)
+		{
+			const T s = shift.get<T>(i);
+			const T v = arg.get<T>(i);
+			result.get<T>(i) = (s >= 8 * sizeof(T)) ? 0 : v >> s;
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void shrfs()
+	{
+		shr_<f32, u32>();
+	}
+
+	void shrfd()
+	{
+		shr_<f64, u64>();
+	}
+
+	void shrdq()
+	{
+		A256Reg arg = reg[op.op3.a].bsc1<u64>(op.op3.a_mask, op.op3.a);
+		A256Reg shift = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b);
+		A256Reg result;
+		for (u32 j = 0; j < 4; j += 2)
+		{
+			const u64 qshift = shift._uq[j] >> 6;
+			const u64 bshift = shift._uq[j] & 63;
+			for (u32 i = 0; i < 2; i++)
+			{
+				if (qshift + i > 1)
+				{
+					result._uq[i + j] = 0;
+				}
+				else if (qshift + i == 1)
+				{
+					result._uq[i + j] = (arg._uq[1 + j] >> bshift);
+				}
+				else
+				{
+					result._uq[i + j] = (arg._uq[i + j] >> bshift) | (bshift ? (arg._uq[i + 1 + j] << (64 - bshift)) : 0);
+				}
+			}
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void shrb()
+	{
+		shr_<s8, u8>();
+	}
+
+	void shrw()
+	{
+		shr_<s16, u16>();
+	}
+
+	void shrd()
+	{
+		shr_<s32, u32>();
+	}
+
+	void shrq()
+	{
+		shr_<s64, u64>();
+	}
+
+	template<typename T>
+	void shrqq_() // shift right logical the whole register (shrqq* r.mask, a.bsc, b.bsc)
+	{
+		A256Reg arg = reg[op.op3.a].bsc1<T>(op.op3.a_mask, op.op3.a);
+		const u64 shift = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b)._uq[0];
+		const u64 qshift = shift >> 6;
+		const u64 bshift = shift & 63;
+		A256Reg result;
+		for (u32 i = 0; i < 4; i++)
+		{
+			if (qshift + i > 3)
+			{
+				result._uq[i] = 0;
+			}
+			else if (qshift + i == 3)
+			{
+				result._uq[i] = (arg._uq[3] >> bshift);
+			}
+			else
+			{
+				result._uq[i] = (arg._uq[(i + qshift) & 3] >> bshift) | (bshift ? (arg._uq[(i + qshift + 1) & 3] << (64 - bshift)) : 0);
+			}
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void shrqqfs()
+	{
+		shrqq_<f32>();
+	}
+
+	void shrqqfd()
+	{
+		shrqq_<f64>();
+	}
+
+	void shrqqb()
+	{
+		shrqq_<s8>();
+	}
+
+	void shrqqw()
+	{
+		shrqq_<s16>();
+	}
+
+	void shrqqd()
+	{
+		shrqq_<s32>();
+	}
+
+	void shrqqq()
+	{
+		shrqq_<s64>();
 	}
 
 	enum A256InstrType
@@ -963,18 +1457,20 @@ struct A256Machine
 			REG(0x0001, set, itOp1_m1_imm32);
 			REG(0x0002, mmovb, itOp2_imm32);
 			REG(0x0003, mswapb, itOp2_imm32);
+
 			REG(0x0004, ld, itOp3_m1_bsc2);
 			REG(0x0005, st, itOp3_m1_bsc2);
-			REG(0x000e, ldr, itOp1_m1_imm32);
-			REG(0x000f, str, itOp1_m1_imm32);
-			REG(0x0006, cmovb, itOp3_m1_bsc2);
-			REG(0x0007, cmovw, itOp3_m1_bsc2);
-			REG(0x0008, cmovd, itOp3_m1_bsc2);
-			REG(0x0009, cmovq, itOp3_m1_bsc2);
-			REG(0x000a, cmovzb, itOp3_m1_bsc2);
-			REG(0x000b, cmovzw, itOp3_m1_bsc2);
-			REG(0x000c, cmovzd, itOp3_m1_bsc2);
-			REG(0x000d, cmovzq, itOp3_m1_bsc2);
+			REG(0x0006, ldr, itOp1_m1_imm32);
+			REG(0x0007, str, itOp1_m1_imm32);
+
+			REG(0x0008, cmovb, itOp3_m1_bsc2);
+			REG(0x0009, cmovw, itOp3_m1_bsc2);
+			REG(0x000a, cmovd, itOp3_m1_bsc2);
+			REG(0x000b, cmovq, itOp3_m1_bsc2);
+			REG(0x000c, cmovzb, itOp3_m1_bsc2);
+			REG(0x000d, cmovzw, itOp3_m1_bsc2);
+			REG(0x000e, cmovzd, itOp3_m1_bsc2);
+			REG(0x000f, cmovzq, itOp3_m1_bsc2);
 			
 			REG(0x0010, addfs, itOp3_m1_bsc2);
 			REG(0x0011, addfd, itOp3_m1_bsc2);
@@ -983,6 +1479,7 @@ struct A256Machine
 			REG(0x0015, addw, itOp3_m1_bsc2);
 			REG(0x0016, addd, itOp3_m1_bsc2);
 			REG(0x0017, addq, itOp3_m1_bsc2);
+
 			REG(0x0018, addfsi, itOp1_m1_imm32);
 			REG(0x0019, addfdi, itOp1_m1_imm32);
 			REG(0x001a, addbi, itOp1_m1_imm8x4);
@@ -1083,6 +1580,75 @@ struct A256Machine
 			REG(0x00bd, divuw, itOp3_m1_bsc2);
 			REG(0x00be, divud, itOp3_m1_bsc2);
 			REG(0x00bf, divuq, itOp3_m1_bsc2);
+
+			REG(0x00c0, rlfs, itOp3_m1_bsc2);
+			REG(0x00c1, rlfd, itOp3_m1_bsc2);
+			REG(0x00c2, rldq, itOp3_m1_bsc2);
+
+			REG(0x00c4, rlb, itOp3_m1_bsc2);
+			REG(0x00c5, rlw, itOp3_m1_bsc2);
+			REG(0x00c6, rld, itOp3_m1_bsc2);
+			REG(0x00c7, rlq, itOp3_m1_bsc2);
+
+			REG(0x00c8, rlqqfs, itOp3_m1_bsc2);
+			REG(0x00c9, rlqqfd, itOp3_m1_bsc2);
+
+			REG(0x00cc, rlqqb, itOp3_m1_bsc2);
+			REG(0x00cd, rlqqw, itOp3_m1_bsc2);
+			REG(0x00ce, rlqqd, itOp3_m1_bsc2);
+			REG(0x00cf, rlqqq, itOp3_m1_bsc2);
+
+			REG(0x00d0, shlfs, itOp3_m1_bsc2);
+			REG(0x00d1, shlfd, itOp3_m1_bsc2);
+			REG(0x00d2, shldq, itOp3_m1_bsc2);
+
+			REG(0x00d4, shlb, itOp3_m1_bsc2);
+			REG(0x00d5, shlw, itOp3_m1_bsc2);
+			REG(0x00d6, shld, itOp3_m1_bsc2);
+			REG(0x00d7, shlq, itOp3_m1_bsc2);
+
+			REG(0x00d8, shlqqfs, itOp3_m1_bsc2);
+			REG(0x00d9, shlqqfd, itOp3_m1_bsc2);
+
+			REG(0x00dc, shlqqb, itOp3_m1_bsc2);
+			REG(0x00dd, shlqqw, itOp3_m1_bsc2);
+			REG(0x00de, shlqqd, itOp3_m1_bsc2);
+			REG(0x00df, shlqqq, itOp3_m1_bsc2);
+
+			REG(0x00e0, sarfs, itOp3_m1_bsc2);
+			REG(0x00e1, sarfd, itOp3_m1_bsc2);
+			REG(0x00e2, sardq, itOp3_m1_bsc2);
+
+			REG(0x00e4, sarb, itOp3_m1_bsc2);
+			REG(0x00e5, sarw, itOp3_m1_bsc2);
+			REG(0x00e6, sard, itOp3_m1_bsc2);
+			REG(0x00e7, sarq, itOp3_m1_bsc2);
+
+			REG(0x00e8, sarqqfs, itOp3_m1_bsc2);
+			REG(0x00e9, sarqqfd, itOp3_m1_bsc2);
+
+			REG(0x00ec, sarqqb, itOp3_m1_bsc2);
+			REG(0x00ed, sarqqw, itOp3_m1_bsc2);
+			REG(0x00ee, sarqqd, itOp3_m1_bsc2);
+			REG(0x00ef, sarqqq, itOp3_m1_bsc2);
+
+			REG(0x00f0, shrfs, itOp3_m1_bsc2);
+			REG(0x00f1, shrfd, itOp3_m1_bsc2);
+			REG(0x00f2, shrdq, itOp3_m1_bsc2);
+
+			REG(0x00f4, shrb, itOp3_m1_bsc2);
+			REG(0x00f5, shrw, itOp3_m1_bsc2);
+			REG(0x00f6, shrd, itOp3_m1_bsc2);
+			REG(0x00f7, shrq, itOp3_m1_bsc2);
+
+			REG(0x00f8, shrqqfs, itOp3_m1_bsc2);
+			REG(0x00f9, shrqqfd, itOp3_m1_bsc2);
+
+			REG(0x00fc, shrqqb, itOp3_m1_bsc2);
+			REG(0x00fd, shrqqw, itOp3_m1_bsc2);
+			REG(0x00fe, shrqqd, itOp3_m1_bsc2);
+			REG(0x00ff, shrqqq, itOp3_m1_bsc2);
+
 #undef REG
 		}
 
