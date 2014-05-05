@@ -53,9 +53,10 @@ int _tmain(int argc, _TCHAR* argv[])
 		program = vm.compile(text);
 		printf("%lld instructions generated.\n", program.size());
 		printf("Executing...\n");
-		vm.reg[0]._uq[0] = (u64)program.data();
-		vm.reg[0]._uq[2] = (u64)stack.data() + sizeof(stack[0]) * stack.size();
-		vm.reg[0]._uq[3] = (u64)cstack.data() + sizeof(cstack[0]) * cstack.size();
+		vm.reg[0]._uq[0] = (u64)program.data(); // $NP
+		vm.reg[0]._uq[1] = (u64)cstack.data() + sizeof(cstack[0]) * cstack.size(); // $CS
+		vm.reg[0]._uq[2] = (u64)stack.data() + sizeof(stack[0]) * stack.size(); // $BP
+		vm.reg[0]._uq[3] = vm.reg[0]._uq[2]; // $SP
 		while (vm.execute());
 		printf("Program finished.\n");
 	}

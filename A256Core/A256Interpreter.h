@@ -8,19 +8,24 @@ struct A256Machine
 {
 	/*
 	Register $00 is special.
-	1) $00.uq0 is pointer to next instruction, mnemonic: $NP
-	2) $00.uq1 reserved
-	3) $00.uq2 is stack pointer, mnemonic: $SP
-	4) $00.uq3 is callstack pointer, mnemonic: $CS
+	1) $00.uq0 is pointer to next instruction ($NP).
+	2) $00.uq1 is callstack pointer ($CS).
+	3) $00.uq2 is stack base pointer ($BP), should be preserved by subroutine.
+	4) $00.uq3 is stack pointer ($SP), should be preserved by subroutine.
 
 	Registers $01 .. $9F are volatile, first ones are function arguments and results.
-	$01 - first argument and function result
-	$02 - second argument
+	$01 - first 256-bit argument and function result,
+	$02 - second argument,
 	$03 - third argument, etc.
-	For example, 64 bit arguments:
-	$01.uq0 - first argument and function result
-	$02.uq0 - second argument
+	Can contain small (up to 32 byte) struct with smaller values packed.
+
+	Passing 64-bit arguments (for example, pointers):
+	$01.uq0 - first argument and function result,
+	$02.uq0 - second argument,
 	$03.uq0 - thirt argument, etc.
+
+	Up to 159 256-bit parameters can be passed via registers.
+	Passing parameters via stack is undefined.
 
 	Registers $A0 .. $FF should be preserved by subroutine.
 	*/
@@ -604,7 +609,7 @@ struct A256Machine
 		fma_<s64>();
 	}
 
-	void call() // jump relative using call stack (call r.mask, imm32)
+	void call() // jump relative using call stack (r) (call r.mask, imm32)
 	{
 		for (u32 i = 0; i < 4; i++)
 		{
@@ -623,7 +628,7 @@ struct A256Machine
 		reg[0]._uq[0] += (s32)op.op1i.imm;
 	}
 
-	void ret() // return using call stack (ret r.mask, imm32)
+	void ret() // return using call stack (r) (ret r.mask, imm32)
 	{
 		if (op.op1i.imm != 0)
 		{
@@ -638,7 +643,7 @@ struct A256Machine
 			{
 				if (op.op1i.r_mask != (3 << (i * 2)))
 				{
-					throw fmt::format(__FUNCTION__"(): multiple stack pointer updates.");
+					throw fmt::format(__FUNCTION__"(): multiple stack pointer update.");
 				}
 				reg[0]._uq[0] = *(u64*)(reg[op.op1i.r]._uq[i]);
 				reg[op.op1i.r]._uq[i] += sizeof(u64);
@@ -689,9 +694,26 @@ struct A256Machine
 	}
 
 	template<typename T>
-	void push_() // push value onto stack (push* v.bsc, a.bsc, b.bsc)
+	void push_() // push value (a) onto stack (r) with alignment using bitwise AND with (b) (push* r.mask, a.bsc, b.bsc)
 	{
-		// TODO
+		A256Reg value = reg[op.op3.a].bsc1<u64>(op.op3.a_mask, op.op3.a);
+		A256Reg align = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b);
+		for (u32 i = 0; i < 4; i++)
+		{
+			switch ((op.op3.r_mask >> (i * 2)) & 3)
+			{
+			case 0: break;
+			case 3:
+			{
+				u64& stack = reg[op.op3.r]._uq[i];
+				stack -= sizeof(T);
+				stack &= align._uq[0];
+				*(T*)(stack) = *(T*)&value;
+				break;
+			}
+			default: throw fmt::format(__FUNCTION__"(): partial stack pointer update.");
+			}
+		}
 	}
 
 	void pushd()
@@ -709,7 +731,7 @@ struct A256Machine
 		push_<u128>();
 	}
 
-	void push()
+	void pushqq()
 	{
 		push_<u256>();
 	}
@@ -754,9 +776,29 @@ struct A256Machine
 	}
 
 	template<typename T>
-	void pop_() // pop value from stack (pop* r.mask, a.bsc, b.bsc)
+	void pop_() // pop value to (a) from stack (r) (pop* r.mask, a.mask, b.bsc)
 	{
-		// TODO
+		A256Reg arg2 = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b); // ???
+		for (u32 i = 0; i < 4; i++)
+		{
+			switch ((op.op3.r_mask >> (i * 2)) & 3)
+			{
+			case 0: break;
+			case 3:
+			{
+				if (op.op3.r_mask != (3 << (i * 2)))
+				{
+					throw fmt::format(__FUNCTION__"(): multiple stack pointer update.");
+				}
+				u64& stack = reg[op.op3.r]._uq[i];
+				A256Reg res = A256Reg::set(*(T*)(stack));
+				stack += sizeof(T);
+				RSAVE1(reg[op.op3.a], res, op.op3.a_mask);
+				break;
+			}
+			default: throw fmt::format(__FUNCTION__"(): partial stack pointer update.");
+			}
+		}
 	}
 
 	void popd()
@@ -774,7 +816,7 @@ struct A256Machine
 		pop_<u128>();
 	}
 
-	void pop()
+	void popqq()
 	{
 		pop_<u256>();
 	}
@@ -844,21 +886,138 @@ struct A256Machine
 		}
 	}
 
-	template<typename Tfrom, typename Tto>
-	void unpk_()
+	template<typename T, typename Tab>
+	void unpk_() // interleave elements in a._dq[0] with b._dq[0] to (r) (unpk* r.mask, a.bsc, b.bsc)
 	{
-
+		A256Reg arg1 = reg[op.op3.a].bsc1<Tab>(op.op3.a_mask, op.op3.a);
+		A256Reg arg2 = reg[op.op3.b].bsc1<Tab>(op.op3.b_mask, op.op3.b);
+		A256Reg result;
+		for (u32 i = 0; i < 16 / sizeof(T); i++)
+		{
+			result.get<T>(i * 2) = arg1.get<T>(i);
+			result.get<T>(i * 2 + 1) = arg2.get<T>(i);
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
-	// 0x0090: unpk* (TODO)
-
-	template<typename Tfrom, typename Tto>
-	void pack_()
+	void unpkfs()
 	{
-
+		unpk_<u32, f32>();
 	}
 
-	// 0x00a0: pack* (TODO)
+	void unpkfd()
+	{
+		unpk_<u64, f64>();
+	}
+
+	void unpkdq()
+	{
+		unpk_<u128, u64>();
+	}
+
+	void unpkb()
+	{
+		unpk_<u8, s8>();
+	}
+
+	void unpkw()
+	{
+		unpk_<u16, s16>();
+	}
+
+	void unpkd()
+	{
+		unpk_<u32, s32>();
+	}
+
+	void unpkq()
+	{
+		unpk_<u64, s64>();
+	}
+
+	template<typename T, typename Tab, u32 high>
+	void pack_() // pack low or high parts of elements in (a) to r._dq[0], and (b) to r._dq[1] (pack* r.mask, a.bsc, b.bsc)
+	{
+		A256Reg arg1 = reg[op.op3.a].bsc1<Tab>(op.op3.a_mask, op.op3.a);
+		A256Reg arg2 = reg[op.op3.b].bsc1<Tab>(op.op3.b_mask, op.op3.b);
+		A256Reg result;
+		for (u32 i = 0; i < 16 / sizeof(T); i++)
+		{
+			result.get<T>(i) = arg1.get<T>(i * 2 + high);
+			result.get<T>(i + 16 / sizeof(T)) = arg2.get<T>(i * 2 + high);
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void packlfs()
+	{
+		pack_<u32, f32, 0>();
+	}
+
+	void packlfd()
+	{
+		pack_<u64, f64, 0>();
+	}
+
+	void packldq()
+	{
+		pack_<u128, u64, 0>();
+	}
+
+	void packlb()
+	{
+		pack_<u8, s8, 0>();
+	}
+
+	void packlw()
+	{
+		pack_<u16, s16, 0>();
+	}
+
+	void packld()
+	{
+		pack_<u32, s32, 0>();
+	}
+
+	void packlq()
+	{
+		pack_<u64, s64, 0>();
+	}
+
+	void packhfs()
+	{
+		pack_<u32, f32, 1>();
+	}
+
+	void packhfd()
+	{
+		pack_<u64, f64, 1>();
+	}
+
+	void packhdq()
+	{
+		pack_<u128, u64, 1>();
+	}
+
+	void packhb()
+	{
+		pack_<u8, s8, 1>();
+	}
+
+	void packhw()
+	{
+		pack_<u16, s16, 1>();
+	}
+
+	void packhd()
+	{
+		pack_<u32, s32, 1>();
+	}
+
+	void packhq()
+	{
+		pack_<u64, s64, 1>();
+	}
 
 	template<typename T>
 	void div_() // divide (div* r.mask, a.bsc, b.bsc)
@@ -965,6 +1124,20 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
+	void rlqq()
+	{
+		A256Reg arg = reg[op.op3.a].bsc1<u64>(op.op3.a_mask, op.op3.a);
+		const u8 rot = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b)._ub[0];
+		const u8 qrot = rot >> 6;
+		const u8 brot = rot & 63;
+		A256Reg result;
+		for (u32 i = 0; i < 4; i++)
+		{
+			result._uq[i] = (arg._uq[(i - qrot) & 3] << brot) | (brot ? (arg._uq[(i - qrot - 1) & 3] >> (64 - brot)) : 0);
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
 	void rlb()
 	{
 		rl_<s8, u8>();
@@ -985,53 +1158,8 @@ struct A256Machine
 		rl_<s64, u64>();
 	}
 
-	template<typename T>
-	void rlqq_() // rotate left the whole register (a) by (b) (rlqq* r.mask, a.bsc, b.bsc)
-	{
-		A256Reg arg = reg[op.op3.a].bsc1<T>(op.op3.a_mask, op.op3.a);
-		const u8 rot = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b)._ub[0];
-		const u8 qrot = rot >> 6;
-		const u8 brot = rot & 63;
-		A256Reg result;
-		for (u32 i = 0; i < 4; i++)
-		{
-			result._uq[i] = (arg._uq[(i - qrot) & 3] << brot) | (brot ? (arg._uq[(i - qrot - 1) & 3] >> (64 - brot)) : 0);
-		}
-		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
-	}
-
-	void rlqqfs()
-	{
-		rlqq_<f32>();
-	}
-
-	void rlqqfd()
-	{
-		rlqq_<f64>();
-	}
-
-	void rlqqb()
-	{
-		rlqq_<s8>();
-	}
-
-	void rlqqw()
-	{
-		rlqq_<s16>();
-	}
-
-	void rlqqd()
-	{
-		rlqq_<s32>();
-	}
-
-	void rlqqq()
-	{
-		rlqq_<s64>();
-	}
-
 	template<typename Ta, typename T>
-	void shl_() // shift left (shl* r.mask, a.bsc, b.bsc)
+	void sll_() // shift left (shl* r.mask, a.bsc, b.bsc)
 	{
 		A256Reg arg = reg[op.op3.a].bsc1<Ta>(op.op3.a_mask, op.op3.a);
 		A256Reg shift = reg[op.op3.b].bsc1<T>(op.op3.b_mask, op.op3.b);
@@ -1045,17 +1173,17 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
-	void shlfs()
+	void sllfs()
 	{
-		shl_<f32, u32>();
+		sll_<f32, u32>();
 	}
 
-	void shlfd()
+	void sllfd()
 	{
-		shl_<f64, u64>();
+		sll_<f64, u64>();
 	}
 
-	void shldq()
+	void slldq()
 	{
 		A256Reg arg = reg[op.op3.a].bsc1<u64>(op.op3.a_mask, op.op3.a);
 		A256Reg shift = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b);
@@ -1083,30 +1211,9 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
-	void shlb()
+	void sllqq()
 	{
-		shl_<s8, u8>();
-	}
-
-	void shlw()
-	{
-		shl_<s16, u16>();
-	}
-
-	void shld()
-	{
-		shl_<s32, u32>();
-	}
-
-	void shlq()
-	{
-		shl_<s64, u64>();
-	}
-
-	template<typename T>
-	void shlqq_() // shift left the whole register (shlqq* r.mask, a.bsc, b.bsc)
-	{
-		A256Reg arg = reg[op.op3.a].bsc1<T>(op.op3.a_mask, op.op3.a);
+		A256Reg arg = reg[op.op3.a].bsc1<u64>(op.op3.a_mask, op.op3.a);
 		const u64 shift = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b)._uq[0];
 		const u64 qshift = shift >> 6;
 		const u64 bshift = shift & 63;
@@ -1129,34 +1236,24 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
-	void shlqqfs()
+	void sllb()
 	{
-		shlqq_<f32>();
+		sll_<s8, u8>();
 	}
 
-	void shlqqfd()
+	void sllw()
 	{
-		shlqq_<f64>();
+		sll_<s16, u16>();
 	}
 
-	void shlqqb()
+	void slld()
 	{
-		shlqq_<s8>();
+		sll_<s32, u32>();
 	}
 
-	void shlqqw()
+	void sllq()
 	{
-		shlqq_<s16>();
-	}
-
-	void shlqqd()
-	{
-		shlqq_<s32>();
-	}
-
-	void shlqqq()
-	{
-		shlqq_<s64>();
+		sll_<s64, u64>();
 	}
 
 	template<typename Ta, typename T, typename Ts>
@@ -1212,30 +1309,9 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
-	void sarb()
+	void sarqq()
 	{
-		sar_<s8, u8, s8>();
-	}
-
-	void sarw()
-	{
-		sar_<s16, u16, s16>();
-	}
-
-	void sard()
-	{
-		sar_<s32, u32, s32>();
-	}
-
-	void sarq()
-	{
-		sar_<s64, u64, s64>();
-	}
-
-	template<typename T>
-	void sarqq_() // shift right arithmetical the whole register (sarqq* r.mask, a.bsc, b.bsc)
-	{
-		A256Reg arg = reg[op.op3.a].bsc1<T>(op.op3.a_mask, op.op3.a);
+		A256Reg arg = reg[op.op3.a].bsc1<u64>(op.op3.a_mask, op.op3.a);
 		const u64 shift = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b)._uq[0];
 		const u64 qshift = shift >> 6;
 		const u64 bshift = shift & 63;
@@ -1258,38 +1334,28 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
-	void sarqqfs()
+	void sarb()
 	{
-		sarqq_<f32>();
+		sar_<s8, u8, s8>();
 	}
 
-	void sarqqfd()
+	void sarw()
 	{
-		sarqq_<f64>();
+		sar_<s16, u16, s16>();
 	}
 
-	void sarqqb()
+	void sard()
 	{
-		sarqq_<s8>();
+		sar_<s32, u32, s32>();
 	}
 
-	void sarqqw()
+	void sarq()
 	{
-		sarqq_<s16>();
-	}
-
-	void sarqqd()
-	{
-		sarqq_<s32>();
-	}
-
-	void sarqqq()
-	{
-		sarqq_<s64>();
+		sar_<s64, u64, s64>();
 	}
 
 	template<typename Ta, typename T>
-	void shr_() // shift right logical (shr* r.mask, a.bsc, b.bsc)
+	void slr_() // shift right logical (shr* r.mask, a.bsc, b.bsc)
 	{
 		A256Reg arg = reg[op.op3.a].bsc1<Ta>(op.op3.a_mask, op.op3.a);
 		A256Reg shift = reg[op.op3.b].bsc1<T>(op.op3.b_mask, op.op3.b);
@@ -1303,17 +1369,17 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
-	void shrfs()
+	void slrfs()
 	{
-		shr_<f32, u32>();
+		slr_<f32, u32>();
 	}
 
-	void shrfd()
+	void slrfd()
 	{
-		shr_<f64, u64>();
+		slr_<f64, u64>();
 	}
 
-	void shrdq()
+	void slrdq()
 	{
 		A256Reg arg = reg[op.op3.a].bsc1<u64>(op.op3.a_mask, op.op3.a);
 		A256Reg shift = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b);
@@ -1341,30 +1407,9 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
-	void shrb()
+	void slrqq()
 	{
-		shr_<s8, u8>();
-	}
-
-	void shrw()
-	{
-		shr_<s16, u16>();
-	}
-
-	void shrd()
-	{
-		shr_<s32, u32>();
-	}
-
-	void shrq()
-	{
-		shr_<s64, u64>();
-	}
-
-	template<typename T>
-	void shrqq_() // shift right logical the whole register (shrqq* r.mask, a.bsc, b.bsc)
-	{
-		A256Reg arg = reg[op.op3.a].bsc1<T>(op.op3.a_mask, op.op3.a);
+		A256Reg arg = reg[op.op3.a].bsc1<u64>(op.op3.a_mask, op.op3.a);
 		const u64 shift = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b)._uq[0];
 		const u64 qshift = shift >> 6;
 		const u64 bshift = shift & 63;
@@ -1387,34 +1432,24 @@ struct A256Machine
 		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
-	void shrqqfs()
+	void slrb()
 	{
-		shrqq_<f32>();
+		slr_<s8, u8>();
 	}
 
-	void shrqqfd()
+	void slrw()
 	{
-		shrqq_<f64>();
+		slr_<s16, u16>();
 	}
 
-	void shrqqb()
+	void slrd()
 	{
-		shrqq_<s8>();
+		slr_<s32, u32>();
 	}
 
-	void shrqqw()
+	void slrq()
 	{
-		shrqq_<s16>();
-	}
-
-	void shrqqd()
-	{
-		shrqq_<s32>();
-	}
-
-	void shrqqq()
-	{
-		shrqq_<s64>();
+		slr_<s64, u64>();
 	}
 
 	enum A256InstrType
@@ -1429,6 +1464,7 @@ struct A256Machine
 		itOp1_bsc1_imm32,
 		itOp2_imm32,
 		itOp3_m1_bsc2,
+		itOp3_m2_bsc1,
 		itOp3_bsc3,
 		itOp4_sign4,
 		itOp6,
@@ -1467,6 +1503,7 @@ struct A256Machine
 			REG(0x0009, cmovw, itOp3_m1_bsc2);
 			REG(0x000a, cmovd, itOp3_m1_bsc2);
 			REG(0x000b, cmovq, itOp3_m1_bsc2);
+
 			REG(0x000c, cmovzb, itOp3_m1_bsc2);
 			REG(0x000d, cmovzw, itOp3_m1_bsc2);
 			REG(0x000e, cmovzd, itOp3_m1_bsc2);
@@ -1474,6 +1511,8 @@ struct A256Machine
 			
 			REG(0x0010, addfs, itOp3_m1_bsc2);
 			REG(0x0011, addfd, itOp3_m1_bsc2);
+			// 0x0012
+			// 0x0013
 
 			REG(0x0014, addb, itOp3_m1_bsc2);
 			REG(0x0015, addw, itOp3_m1_bsc2);
@@ -1487,9 +1526,12 @@ struct A256Machine
 			REG(0x001c, adddi, itOp1_m1_imm32);
 			REG(0x001d, addqip, itOp1_m1_imm32p);
 			REG(0x001e, addqin, itOp1_m1_imm32n);
+			// 0x001f
 
 			REG(0x0020, subfs, itOp3_m1_bsc2);
 			REG(0x0021, subfd, itOp3_m1_bsc2);
+			// 0x0022
+			// 0x0023
 
 			REG(0x0024, subb, itOp3_m1_bsc2);
 			REG(0x0025, subw, itOp3_m1_bsc2);
@@ -1498,6 +1540,8 @@ struct A256Machine
 
 			REG(0x0028, jnzfs, itOp1_bsc1_imm32);
 			REG(0x0029, jnzfd, itOp1_bsc1_imm32);
+			// 0x002a
+			// 0x002b
 
 			REG(0x002c, jnzb, itOp1_bsc1_imm32);
 			REG(0x002d, jnzw, itOp1_bsc1_imm32);
@@ -1506,6 +1550,8 @@ struct A256Machine
 
 			REG(0x0030, mulfs, itOp3_m1_bsc2);
 			REG(0x0031, mulfd, itOp3_m1_bsc2);
+			// 0x0032
+			// 0x0033
 
 			REG(0x0034, mulb, itOp3_m1_bsc2);
 			REG(0x0035, mulw, itOp3_m1_bsc2);
@@ -1514,6 +1560,8 @@ struct A256Machine
 
 			REG(0x0038, jzfs, itOp1_bsc1_imm32);
 			REG(0x0039, jzfd, itOp1_bsc1_imm32);
+			// 0x003a
+			// 0x003b
 
 			REG(0x003c, jzb, itOp1_bsc1_imm32);
 			REG(0x003d, jzw, itOp1_bsc1_imm32);
@@ -1522,6 +1570,8 @@ struct A256Machine
 
 			REG(0x0040, fmafs, itOp4_sign4);
 			REG(0x0041, fmafd, itOp4_sign4);
+			// 0x0042
+			// 0x0043
 
 			REG(0x0044, fmab, itOp4_sign4);
 			REG(0x0045, fmaw, itOp4_sign4);
@@ -1529,52 +1579,139 @@ struct A256Machine
 			REG(0x0047, fmaq, itOp4_sign4);
 
 			REG(0x0048, call, itOp1_m1_imm32);
-			REG(0x004f, ret, itOp1_m1_imm32);
+			// 0x0049
+			// 0x004a
+			// 0x004b
+
+			REG(0x004c, ret, itOp1_m1_imm32);
+			// 0x004d
+			// 0x004e
+			// 0x004f
 
 			REG(0x0050, andfs, itOp3_m1_bsc2);
 			REG(0x0051, andfd, itOp3_m1_bsc2);
+			// 0x0052
+			// 0x0053
 
 			REG(0x0054, andb, itOp3_m1_bsc2);
 			REG(0x0055, andw, itOp3_m1_bsc2);
 			REG(0x0056, andd, itOp3_m1_bsc2);
 			REG(0x0057, andq, itOp3_m1_bsc2);
 
-			REG(0x005a, pushd, itOp3_bsc3);
-			REG(0x005b, pushq, itOp3_bsc3);
-			REG(0x005c, pushdq, itOp3_bsc3);
-			REG(0x005d, push, itOp3_bsc3);
+			// 0x0058
+			// 0x0059
+			REG(0x005a, pushd, itOp3_m1_bsc2);
+			REG(0x005b, pushq, itOp3_m1_bsc2);
+			REG(0x005c, pushdq, itOp3_m1_bsc2);
+			REG(0x005d, pushqq, itOp3_m1_bsc2);
+			// 0x005e
+			// 0x005f
 
 			REG(0x0060, orfs, itOp3_m1_bsc2);
 			REG(0x0061, orfd, itOp3_m1_bsc2);
+			// 0x0062
+			// 0x0063
 
 			REG(0x0064, orb, itOp3_m1_bsc2);
 			REG(0x0065, orw, itOp3_m1_bsc2);
 			REG(0x0066, ord, itOp3_m1_bsc2);
 			REG(0x0067, orq, itOp3_m1_bsc2);
 
-			REG(0x006a, popd, itOp3_m1_bsc2);
-			REG(0x006b, popq, itOp3_m1_bsc2);
-			REG(0x006c, popdq, itOp3_m1_bsc2);
-			REG(0x006d, pop, itOp3_m1_bsc2);
+			// 0x0068
+			// 0x0069
+			REG(0x006a, popd, itOp3_m2_bsc1);
+			REG(0x006b, popq, itOp3_m2_bsc1);
+			REG(0x006c, popdq, itOp3_m2_bsc1);
+			REG(0x006d, popqq, itOp3_m2_bsc1);
+			// 0x006e
+			// 0x006f
 
 			REG(0x0070, xorfs, itOp3_m1_bsc2);
 			REG(0x0071, xorfd, itOp3_m1_bsc2);
+			// 0x0072
+			// 0x0073
 
 			REG(0x0074, xorb, itOp3_m1_bsc2);
 			REG(0x0075, xorw, itOp3_m1_bsc2);
 			REG(0x0076, xord, itOp3_m1_bsc2);
 			REG(0x0077, xorq, itOp3_m1_bsc2);
 
+			// 0x0078
+			// 0x0079
+			// 0x007a
+			// 0x007b
+			// 0x007c
+			// 0x007d
+			// 0x007e
+			// 0x007f
+
 			REG(0x0080, shufb, itOp3_m1_bsc2);
 			REG(0x0081, shufbx, itOp6);
+			// 0x0082
+			// 0x0083
+			// 0x0084
+			// 0x0085
+			// 0x0086
+			// 0x0087
+			// 0x0088
+			// 0x0089
+			// 0x008a
+			// 0x008b
+			// 0x008c
+			// 0x008d
+			// 0x008e
+			// 0x008f
+			 
+			REG(0x0090, unpkfs, itOp3_m1_bsc2);
+			REG(0x0091, unpkfd, itOp3_m1_bsc2);
+			REG(0x0092, unpkdq, itOp3_m1_bsc2);
+			// 0x0093
+			REG(0x0094, unpkb, itOp3_m1_bsc2);
+			REG(0x0095, unpkw, itOp3_m1_bsc2);
+			REG(0x0096, unpkd, itOp3_m1_bsc2);
+			REG(0x0097, unpkq, itOp3_m1_bsc2);
+
+			// 0x0098
+			// 0x0099
+			// 0x009a
+			// 0x009b
+			// 0x009c
+			// 0x009d
+			// 0x009e
+			// 0x009f
+
+			REG(0x00a0, packlfs, itOp3_m1_bsc2);
+			REG(0x00a1, packlfd, itOp3_m1_bsc2);
+			REG(0x00a2, packldq, itOp3_m1_bsc2);
+			// 0x00a3
+			REG(0x00a4, packlb, itOp3_m1_bsc2);
+			REG(0x00a5, packlw, itOp3_m1_bsc2);
+			REG(0x00a6, packld, itOp3_m1_bsc2);
+			REG(0x00a7, packlq, itOp3_m1_bsc2);
+
+			REG(0x00a8, packhfs, itOp3_m1_bsc2);
+			REG(0x00a9, packhfd, itOp3_m1_bsc2);
+			REG(0x00aa, packhdq, itOp3_m1_bsc2);
+			// 0x00ab
+			REG(0x00ac, packhb, itOp3_m1_bsc2);
+			REG(0x00ad, packhw, itOp3_m1_bsc2);
+			REG(0x00ae, packhd, itOp3_m1_bsc2);
+			REG(0x00af, packhq, itOp3_m1_bsc2);
 
 			REG(0x00b0, divfs, itOp3_m1_bsc2);
 			REG(0x00b1, divfd, itOp3_m1_bsc2);
+			// 0x00b2
+			// 0x00b3
 
 			REG(0x00b4, divsb, itOp3_m1_bsc2);
 			REG(0x00b5, divsw, itOp3_m1_bsc2);
 			REG(0x00b6, divsd, itOp3_m1_bsc2);
 			REG(0x00b7, divsq, itOp3_m1_bsc2);
+
+			// 0x00b8
+			// 0x00b9
+			// 0x00ba
+			// 0x00bb
 
 			REG(0x00bc, divub, itOp3_m1_bsc2);
 			REG(0x00bd, divuw, itOp3_m1_bsc2);
@@ -1584,70 +1721,78 @@ struct A256Machine
 			REG(0x00c0, rlfs, itOp3_m1_bsc2);
 			REG(0x00c1, rlfd, itOp3_m1_bsc2);
 			REG(0x00c2, rldq, itOp3_m1_bsc2);
+			REG(0x00c3, rlqq, itOp3_m1_bsc2);
 
 			REG(0x00c4, rlb, itOp3_m1_bsc2);
 			REG(0x00c5, rlw, itOp3_m1_bsc2);
 			REG(0x00c6, rld, itOp3_m1_bsc2);
 			REG(0x00c7, rlq, itOp3_m1_bsc2);
 
-			REG(0x00c8, rlqqfs, itOp3_m1_bsc2);
-			REG(0x00c9, rlqqfd, itOp3_m1_bsc2);
+			// 0x00c8
+			// 0x00c9
+			// 0x00ca
+			// 0x00cb
+			// 0x00cc
+			// 0x00cd
+			// 0x00ce
+			// 0x00cf
 
-			REG(0x00cc, rlqqb, itOp3_m1_bsc2);
-			REG(0x00cd, rlqqw, itOp3_m1_bsc2);
-			REG(0x00ce, rlqqd, itOp3_m1_bsc2);
-			REG(0x00cf, rlqqq, itOp3_m1_bsc2);
+			REG(0x00d0, sllfs, itOp3_m1_bsc2);
+			REG(0x00d1, sllfd, itOp3_m1_bsc2);
+			REG(0x00d2, slldq, itOp3_m1_bsc2);
+			REG(0x00d3, sllqq, itOp3_m1_bsc2);
 
-			REG(0x00d0, shlfs, itOp3_m1_bsc2);
-			REG(0x00d1, shlfd, itOp3_m1_bsc2);
-			REG(0x00d2, shldq, itOp3_m1_bsc2);
+			REG(0x00d4, sllb, itOp3_m1_bsc2);
+			REG(0x00d5, sllw, itOp3_m1_bsc2);
+			REG(0x00d6, slld, itOp3_m1_bsc2);
+			REG(0x00d7, sllq, itOp3_m1_bsc2);
 
-			REG(0x00d4, shlb, itOp3_m1_bsc2);
-			REG(0x00d5, shlw, itOp3_m1_bsc2);
-			REG(0x00d6, shld, itOp3_m1_bsc2);
-			REG(0x00d7, shlq, itOp3_m1_bsc2);
-
-			REG(0x00d8, shlqqfs, itOp3_m1_bsc2);
-			REG(0x00d9, shlqqfd, itOp3_m1_bsc2);
-
-			REG(0x00dc, shlqqb, itOp3_m1_bsc2);
-			REG(0x00dd, shlqqw, itOp3_m1_bsc2);
-			REG(0x00de, shlqqd, itOp3_m1_bsc2);
-			REG(0x00df, shlqqq, itOp3_m1_bsc2);
+			// 0x00d8
+			// 0x00d9
+			// 0x00da
+			// 0x00db
+			// 0x00dc
+			// 0x00dd
+			// 0x00de
+			// 0x00df
 
 			REG(0x00e0, sarfs, itOp3_m1_bsc2);
 			REG(0x00e1, sarfd, itOp3_m1_bsc2);
 			REG(0x00e2, sardq, itOp3_m1_bsc2);
+			REG(0x00e3, sarqq, itOp3_m1_bsc2);
 
 			REG(0x00e4, sarb, itOp3_m1_bsc2);
 			REG(0x00e5, sarw, itOp3_m1_bsc2);
 			REG(0x00e6, sard, itOp3_m1_bsc2);
 			REG(0x00e7, sarq, itOp3_m1_bsc2);
 
-			REG(0x00e8, sarqqfs, itOp3_m1_bsc2);
-			REG(0x00e9, sarqqfd, itOp3_m1_bsc2);
+			// 0x00e8
+			// 0x00e9
+			// 0x00ea
+			// 0x00eb
+			// 0x00ec
+			// 0x00ed
+			// 0x00ee
+			// 0x00ef
 
-			REG(0x00ec, sarqqb, itOp3_m1_bsc2);
-			REG(0x00ed, sarqqw, itOp3_m1_bsc2);
-			REG(0x00ee, sarqqd, itOp3_m1_bsc2);
-			REG(0x00ef, sarqqq, itOp3_m1_bsc2);
+			REG(0x00f0, slrfs, itOp3_m1_bsc2);
+			REG(0x00f1, slrfd, itOp3_m1_bsc2);
+			REG(0x00f2, slrdq, itOp3_m1_bsc2);
+			REG(0x00f3, slrqq, itOp3_m1_bsc2);
 
-			REG(0x00f0, shrfs, itOp3_m1_bsc2);
-			REG(0x00f1, shrfd, itOp3_m1_bsc2);
-			REG(0x00f2, shrdq, itOp3_m1_bsc2);
+			REG(0x00f4, slrb, itOp3_m1_bsc2);
+			REG(0x00f5, slrw, itOp3_m1_bsc2);
+			REG(0x00f6, slrd, itOp3_m1_bsc2);
+			REG(0x00f7, slrq, itOp3_m1_bsc2);
 
-			REG(0x00f4, shrb, itOp3_m1_bsc2);
-			REG(0x00f5, shrw, itOp3_m1_bsc2);
-			REG(0x00f6, shrd, itOp3_m1_bsc2);
-			REG(0x00f7, shrq, itOp3_m1_bsc2);
-
-			REG(0x00f8, shrqqfs, itOp3_m1_bsc2);
-			REG(0x00f9, shrqqfd, itOp3_m1_bsc2);
-
-			REG(0x00fc, shrqqb, itOp3_m1_bsc2);
-			REG(0x00fd, shrqqw, itOp3_m1_bsc2);
-			REG(0x00fe, shrqqd, itOp3_m1_bsc2);
-			REG(0x00ff, shrqqq, itOp3_m1_bsc2);
+			// 0x00f8
+			// 0x00f9
+			// 0x00fa
+			// 0x00fb
+			// 0x00fc
+			// 0x00fd
+			// 0x00fe
+			// 0x00ff
 
 #undef REG
 		}
@@ -1871,12 +2016,17 @@ struct A256Machine
 					pos += 3;
 					return 0x0300;
 				}
-				if (pos + 2 < len && !strncmp(&text[pos], "$SP", 3))
+				if (pos + 2 < len && !strncmp(&text[pos], "$CS", 3))
+				{
+					pos += 3;
+					return 0x0c00;
+				}
+				if (pos + 2 < len && !strncmp(&text[pos], "$BP", 3))
 				{
 					pos += 3;
 					return 0x3000;
 				}
-				if (pos + 2 < len && !strncmp(&text[pos], "$CS", 3))
+				if (pos + 2 < len && !strncmp(&text[pos], "$SP", 3))
 				{
 					pos += 3;
 					return 0xc000;
@@ -1953,12 +2103,17 @@ struct A256Machine
 					pos += 3;
 					return 0xc000;
 				}
-				if (pos + 2 < len && !strncmp(&text[pos], "$SP", 3))
+				if (pos + 2 < len && !strncmp(&text[pos], "$CS", 3))
+				{
+					pos += 3;
+					return 0xc100;
+				}
+				if (pos + 2 < len && !strncmp(&text[pos], "$BP", 3))
 				{
 					pos += 3;
 					return 0xc200;
 				}
-				if (pos + 2 < len && !strncmp(&text[pos], "$CS", 3))
+				if (pos + 2 < len && !strncmp(&text[pos], "$SP", 3))
 				{
 					pos += 3;
 					return 0xc300;
@@ -2570,7 +2725,7 @@ struct A256Machine
 				A256Cmd cmd;
 				cmd.cmd = instr.find(&A256Machine::call);
 				cmd.op1i.r = 0; // $00
-				cmd.op1i.r_mask = 0xc0; // $CS
+				cmd.op1i.r_mask = 0x0c; // $CS
 				cmd.op1i.imm = compiler.read_imm32();
 				output.push_back(cmd);
 				continue;
@@ -2584,7 +2739,7 @@ struct A256Machine
 				A256Cmd cmd;
 				cmd.cmd = instr.find(&A256Machine::ret);
 				cmd.op1i.r = 0; // $00
-				cmd.op1i.r_mask = 0xc0; // $CS
+				cmd.op1i.r_mask = 0x0c; // $CS
 				cmd.op1i.imm = compiler.read_imm32();
 				output.push_back(cmd);
 				continue;
@@ -2710,6 +2865,15 @@ struct A256Machine
 				cmd.raww[0] = compiler.read_rmask1();
 				compiler.read_comma();
 				cmd.raww[1] = compiler.read_rbsc1();
+				compiler.read_comma();
+				cmd.raww[2] = compiler.read_rbsc1();
+				break;
+			}
+			case itOp3_m2_bsc1:
+			{
+				cmd.raww[0] = compiler.read_rmask1();
+				compiler.read_comma();
+				cmd.raww[1] = compiler.read_rmask1();
 				compiler.read_comma();
 				cmd.raww[2] = compiler.read_rbsc1();
 				break;
