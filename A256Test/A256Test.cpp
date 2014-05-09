@@ -20,7 +20,7 @@ int _tmain(int argc, _TCHAR* argv[])
 		"set         $01.0x93, #cnt; initialize counter\n"
 		"@SimpleLoop:\n"
 		"subd        $01, $01, 1; decrement\n"
-		"jnzd        $01.ud0, @SimpleLoop; test and jump\n"
+		"jrnz        $01.ud0, @SimpleLoop; test and jump\n"
 		"stop        $01, 0xB;\n"
 		"stop        $00, 0\n";
 
