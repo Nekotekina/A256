@@ -16,13 +16,19 @@ A256Machine vm;
 int _tmain(int argc, _TCHAR* argv[])
 {
 	std::string text =
-		"#cnt 0x00ffffff; abc\n"
-		"set         $01.0x93, #cnt; initialize counter\n"
+		"setd $01.ud0, 0x02ffffff; initialize counter\n"
 		"@SimpleLoop:\n"
-		"subd        $01, $01, 1; decrement\n"
-		"jrnz        $01.ud0, @SimpleLoop; test and jump\n"
-		"stop        $01, 0xB;\n"
-		"stop        $00, 0\n";
+		"subd $01.ud0, $01.ud0, 1; decrement\n"
+		"jrnz $01.ud0, @SimpleLoop; check counter\n"
+		"stop $01, 11; show register data\n"
+		"addr $01.uq0, @HelloWorld; set text pointer\n"
+		"setd $01.ud2, 15; set text length\n"
+		"setd $01.ud3, 0; fix text length\n"
+		"stop $01, 12; print text\n"
+		"stop $00, 0\n"
+		"@HelloWorld:\n"
+		"d 'Hello, w'\n"
+		"d 'orld!\\n'\n";
 
 	std::vector<A256Cmd> program;
 	std::vector<u256> stack(1024 * 128);
@@ -47,7 +53,7 @@ int _tmain(int argc, _TCHAR* argv[])
 		}
 		else
 		{
-			printf(text.c_str());
+			printf("%s", text.c_str());
 		}
 		printf("Compiling...\n");
 		program = vm.compile(text);

@@ -5,26 +5,26 @@
 // basic scalarity selector 1
 
 /*
-1) selected data is converted (if necessary) and repeated
-2) "packing" means, if the instruction operates smaller data, operation is performed on smaller vector (16-128 bit) with 2-16 elements
-3) "saturation" means, values exceeding bounds are set to those bounds
+1) selected data is converted (or not) and repeated
+2) "packing" means, selected fragment is broadcasted as is, with no conversion
+3) "saturation" means, conversion to operating type where values exceeding bounds are set to those bounds
 4) "convert" means, source or destination is interleaved with zero values (depends on sizes)
 000 ##### - select _ub[] with saturation ($00.ub0 .. $FF.ub31)
 001 ##### - select _sb[] with saturation ($00.sb0 .. $FF.sb31)
-0100 #### - select _uw[] with packing ($00.uw0 .. $FF.uw15)
-0101 #### - select _sw[] with packing ($00.sw0 .. $FF.sw15)
+0100 #### - select _uw[] with packing ($00.uw0 .. $FF.uw15, $00.sw0 .. $FF.sw15)
+0101 #### - not used
 0110 #### - select _uw[] with saturation ($00.uws0 .. $FF.uws15)
 0111 #### - select _sw[] with saturation ($00.sws0 .. $FF.sws15)
-10000 ### - select _ud[] with packing ($00.ud0 .. $FF.ud7)
-10001 ### - select _sd[] with packing ($00.sd0 .. $FF.sd7)
+10000 ### - select _ud[] with packing ($00.ud0 .. $FF.ud7, $00.sd0 .. $FF.sd7, $00.fs0 .. $FF.fs7)
+10001 ### - select _fs[] with saturation ($00.fss0 .. $FF.fss7)
 10010 ### - select _ud[] with saturation ($00.uds0 .. $FF.uds7)
 10011 ### - select _sd[] with saturation ($00.sds0 .. $FF.sds7)
-101 @@ ### - select _fs[] with rounding control ($00.fsr0, $00.fst0, $00.fsf0, $00.fsc0 .. $FF.fsc7)
-110000 ## - select _uq[] with packing ($00.uq0 .. $FF.uq3)
-110001 ## - select _sq[] with packing ($00.sq0 .. $FF.sq3)
+101 @@ ### - select _fs[] with rounding and saturation ($00.fsr0, $00.fst0, $00.fsf0, $00.fsc0 .. $FF.fsc7)
+110000 ## - select _uq[] with packing ($00.uq0 .. $FF.uq3, $00.sq0 .. $FF.sq3, $00.fd0 .. $FF.fd3)
+110001 ## - select _fd[] with saturation ($00.fds0 .. $FF.fds3)
 110010 ## - select _uq[] with saturation ($00.uqs0 .. $FF.uqs3)
 110011 ## - select _sq[] with saturation ($00.sqs0 .. $FF.sqs3)
-1101 @@ ## - select _fd[] with rounding control ($00.fdr0, $00.fdt0, $00.fdf0, $00.fdc0 .. $FF.fdc3)
+1101 @@ ## - select _fd[] with rounding and saturation ($00.fdr0, $00.fdt0, $00.fdf0, $00.fdc0 .. $FF.fdc3)
 1110000 # - select _dq[] with packing ($00.dq0 .. $FF.dq1)
 
 11100010 - zero-extend bytes to words ($00.zxbw)
@@ -42,8 +42,8 @@
 11101110 - zero-extend qwords to double qwords ($00.zxqdq)
 11101111 - sign-extend qwords to double qwords ($00.sxqdq)
 
-11110000 - convert from single with truncation and saturation ($00.getfs)
-11110001 - convert from double with truncation and saturation ($00.getfd)
+11110000 - convert from single with saturation ($00.getfs)
+11110001 - convert from double with saturation ($00.getfd)
 11110010 - convert from unsigned byte with saturation ($00.getub)
 11110011 - convert from signed byte with saturation ($00.getsb)
 11110100 - convert from unsigned word with saturation ($00.getuw)
@@ -68,8 +68,8 @@
 aabbccrr: 2 bit for each argument (a, b, c and result)
 00: do nothing
 01: abs(): set sign to positive, may not work correctly for minimal int (abs, $FF.abs)
-10: minus(): invert sign, may not work correctly for minimal int (-, $FF.-)
-11: minus(abs()): set sign to negative (-abs, $FF.-abs)
+10: neg(): invert sign, may not work correctly for minimal int (neg, $FF.neg)
+11: neg(abs()): set sign to negative (negabs, $FF.negabs)
 */
 
 // 256-bit register struct
@@ -271,20 +271,11 @@ union A256Reg
 		}
 		case 2: // select (...) word with packing
 		{
-			if (sizeof(T) < 2)
+			if (code & 0x10)
 			{
-				res.fill(_uw[code % 16]); // packing
+				throw fmt::format("Unsupported bsc1 encoding");
 			}
-			else if (code & 0x10) // signed word
-			{
-				sel = (T)_sw[code % 16];
-				res.fill(sel);
-			}
-			else // unsigned word
-			{
-				sel = (T)_uw[code % 16];
-				res.fill(sel);
-			}
+			res.fill(_uw[code % 16]); // packing
 			break;
 		}
 		case 3: // select (...) word with saturation
@@ -316,19 +307,14 @@ union A256Reg
 					res.fill(sel);
 				}
 			}
-			else if (sizeof(T) < 4) // packing
+			else if (code & 8) // single
+			{
+				saturate(sel, _fs[code % 8]);
+				res.fill(sel);
+			}
+			else // packing
 			{
 				res.fill(_ud[code % 8]);
-			}
-			else if (code & 8) // signed dword
-			{
-				sel = (T)_sd[code % 8];
-				res.fill(sel);
-			}
-			else // unsigned dword
-			{
-				sel = (T)_ud[code % 8];
-				res.fill(sel);
 			}
 			break;
 		}
@@ -338,22 +324,22 @@ union A256Reg
 			{
 				if (code & 8)
 				{
-					sel = (T)_fs[code % 8]; // trunc or unchanged
+					saturate(sel, trunc(_fs[code % 8]));
 				}
 				else
 				{
-					sel = (T)ceil(_fs[code % 8]);
+					saturate(sel, ceil(_fs[code % 8]));
 				}
 			}
 			else
 			{
 				if (code & 8)
 				{
-					sel = (T)floor(_fs[code % 8]);
+					saturate(sel, floor(_fs[code % 8]));
 				}
 				else
 				{
-					sel = (T)round(_fs[code % 8]);
+					saturate(sel, round(_fs[code % 8]));
 				}
 			}
 			res.fill(sel);
@@ -367,24 +353,25 @@ union A256Reg
 				{
 					if (code & 4)
 					{
-						sel = (T)_fd[code % 4]; // trunc or unchanged
+						saturate(sel, trunc(_fd[code % 4]));
 					}
 					else
 					{
-						sel = (T)ceil(_fd[code % 4]);
+						saturate(sel, ceil(_fd[code % 4]));
 					}
 				}
 				else
 				{
 					if (code & 4)
 					{
-						sel = (T)floor(_fd[code % 4]);
+						saturate(sel, floor(_fd[code % 4]));
 					}
 					else
 					{
-						sel = (T)round(_fd[code % 4]);
+						saturate(sel, round(_fd[code % 4]));
 					}
 				}
+				res.fill(sel);
 			}
 			else
 			{
@@ -401,19 +388,14 @@ union A256Reg
 						res.fill(sel);
 					}
 				}
-				else if (sizeof(T) < 8) // packing
+				else if (code & 4) // double
+				{
+					saturate(sel, _fd[code % 4]);
+					res.fill(sel);
+				}
+				else // packing
 				{
 					res.fill(_uq[code % 4]);
-				}
-				else if (code & 4) // signed
-				{
-					sel = (T)_sq[code % 4];
-					res.fill(sel);
-				}
-				else // unsigned
-				{
-					sel = (T)_uq[code % 4];
-					res.fill(sel);
 				}
 			}
 			break;

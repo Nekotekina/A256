@@ -28,10 +28,12 @@ struct A256Machine
 	Passing parameters via stack is undefined.
 
 	Registers $A0 .. $FF should be preserved by subroutine.
+	Registers $90 .. $9F and $01 can be used for simple leaf subroutines as the only volatile registers.
 	*/
 
 	A256Reg reg[256]; // registers $00 .. $FF
 	A256Cmd op; // current operation (copied from memory)
+	s64 exit_status;
 
 	A256Machine()
 	{
@@ -45,6 +47,8 @@ struct A256Machine
 		case 0x00: // exit
 		{
 			(u64&)op = 0;
+			A256Reg arg1 = reg[op.op1i.r].bsc1<s64>(op.op1i.r_mask, op.op1i.r);
+			exit_status = arg1._sq[0];
 			break;
 		}
 		case 0x01: // print f32
@@ -160,6 +164,22 @@ struct A256Machine
 				arg1._uq[3], arg1._uq[2], arg1._uq[1], arg1._uq[0]);
 			break;
 		}
+		case 0x0c: // print arbitrary data (uq[0] = pointer, uq[1] = length)
+		{
+			A256Reg arg1 = reg[op.op1i.r].bsc1<u64>(op.op1i.r_mask, op.op1i.r);
+			std::string data((const char*)arg1._uq[0], arg1._uq[1]);
+			printf("%s", data.c_str());
+			break;
+		}
+		case 0x0d: // throw exception if register is zero
+		{
+			A256Reg arg1 = reg[op.op1i.r].bsc1<u64>(op.op1i.r_mask, op.op1i.r);
+			if (!arg1._uq[0] && !arg1._uq[1] && !arg1._uq[2] && !arg1._uq[3])
+			{
+				throw fmt::format("[$%.2X%s] Assertion failed.", op.op1i.r, arg1.bsc1_fmt(op.op1i.r_mask).c_str());
+			}
+			break;
+		}
 		default:
 		{
 			throw fmt::format(__FUNCTION__"(): invalid code 0x%x.", code);
@@ -167,9 +187,9 @@ struct A256Machine
 		}
 	}
 
-	void set() // set register to immediate (set r.mask, imm32)
+	void setd() // set register to immediate (set r.mask, imm32)
 	{
-		A256Reg res = A256Reg::set(op.op1i.imm);
+		A256Reg res = A256Reg::set<u32>(op.op1i.imm);
 		RSAVE1(reg[op.op1i.r], res, op.op1i.r_mask);
 	}
 
@@ -589,6 +609,12 @@ struct A256Machine
 		add_i<s64, u64>(~0ull & op.op1i.imm);
 	}
 
+	void addr() // load address relatively (addr r.mask, imm32)
+	{
+		A256Reg result = A256Reg::set<u64>(reg[0]._uq[0] + op.op1i.imm);
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
 	template<typename T>
 	void sub_() // subtract (sub* r.mask, a.bsc, b.bsc)
 	{
@@ -630,6 +656,41 @@ struct A256Machine
 	void subq()
 	{
 		sub_<s64>();
+	}
+
+	template<typename T, typename Tu>
+	void cadd_() // carry of addition (cadd* r.mask, a.bsc, b.bsc)
+	{
+		A256Reg arg1 = reg[op.op3.a].bsc1<T>(op.op3.a_mask, op.op3.a);
+		A256Reg arg2 = reg[op.op3.b].bsc1<T>(op.op3.b_mask, op.op3.b);
+		A256Reg result;
+		for (u32 i = 0; i < 32 / sizeof(T); i++)
+		{
+			Tu v1 = arg1.get<Tu>(i);
+			Tu v2 = arg2.get<Tu>(i);
+			result.get<Tu>(i) = (v1 + v2) < v1 ? 1 : 0;
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void caddb()
+	{
+		cadd_<s8, u8>();
+	}
+
+	void caddw()
+	{
+		cadd_<s16, u16>();
+	}
+
+	void caddd()
+	{
+		cadd_<s32, u32>();
+	}
+
+	void caddq()
+	{
+		cadd_<s64, u64>();
 	}
 
 	template<typename T>
@@ -1904,7 +1965,7 @@ struct A256Machine
 	max_num = std::max<u32>(code, max_num)
 
 			REG(0x0000, stop, itOp1_bsc1_imm32);
-			REG(0x0001, set, itOp1_m1_imm32);
+			REG(0x0001, setd, itOp1_m1_imm32);
 			REG(0x0002, mmovb, itOp2_imm32);
 			REG(0x0003, mswapb, itOp2_imm32);
 
@@ -1939,7 +2000,7 @@ struct A256Machine
 			REG(0x001c, adddi, itOp1_m1_imm32);
 			REG(0x001d, addqip, itOp1_m1_imm32p);
 			REG(0x001e, addqin, itOp1_m1_imm32n);
-			// 0x001f
+			REG(0x001f, addr, itOp1_m1_imm32);
 
 			REG(0x0020, subfs, itOp3_m1_bsc2);
 			REG(0x0021, subfd, itOp3_m1_bsc2);
@@ -1954,10 +2015,10 @@ struct A256Machine
 			// 0x0029
 			// 0x002a
 			// 0x002b
-			// 0x002c
-			// 0x002d
-			// 0x002e
-			// 0x002f
+			REG(0x002c, caddb, itOp3_m1_bsc2);
+			REG(0x002d, caddw, itOp3_m1_bsc2);
+			REG(0x002e, caddd, itOp3_m1_bsc2);
+			REG(0x002f, caddq, itOp3_m1_bsc2);
 
 			REG(0x0030, mulfs, itOp3_m1_bsc2);
 			REG(0x0031, mulfd, itOp3_m1_bsc2);
@@ -2235,7 +2296,7 @@ struct A256Machine
 			REG(0x0124, minsb, itOp3_m1_bsc2);
 			REG(0x0125, minsw, itOp3_m1_bsc2);
 			REG(0x0126, minsd, itOp3_m1_bsc2);
-			REG(0x0127, minsb, itOp3_m1_bsc2);
+			REG(0x0127, minsq, itOp3_m1_bsc2);
 			// 0x0128
 			// 0x0129
 			// 0x012a
@@ -2252,7 +2313,7 @@ struct A256Machine
 			REG(0x0134, maxsb, itOp3_m1_bsc2);
 			REG(0x0135, maxsw, itOp3_m1_bsc2);
 			REG(0x0136, maxsd, itOp3_m1_bsc2);
-			REG(0x0137, maxsb, itOp3_m1_bsc2);
+			REG(0x0137, maxsq, itOp3_m1_bsc2);
 			// 0x0138
 			// 0x0139
 			// 0x013a
@@ -2439,9 +2500,67 @@ struct A256Machine
 				int count = 0;
 				u64 res = 0;
 				bool hex = false;
+				bool chr = false;
 				while (pos < len)
 				{
-					if (hex)
+					if (text[pos] == '\'' && !count && !hex && !chr)
+					{
+						pos++;
+						count = 0;
+						chr = true;
+						continue;
+					}
+					else if (chr) // some packed characters
+					{
+						if (text[pos] == '\'')
+						{
+							pos++;
+							break;
+						}
+						if (count >= 8)
+						{
+							printf(__FUNCTION__"(): char too big.\n");
+							throw pos;
+						}
+						u64 data = text[pos++];
+						if (data == '\\')
+						{
+							if (pos >= len)
+							{
+								printf(__FUNCTION__"(): end of file after \\.\n");
+								throw pos;
+							}
+							switch (text[pos])
+							{
+							case '\\': data = '\\'; break;
+							case '\"': data = '\"'; break;
+							case '\'': data = '\''; break;
+							case 'n': data = '\n'; break;
+							case 'r': data = '\r'; break;
+							case 'b': data = '\b'; break;
+							case 't': data = '\t'; break;
+							case 'f': data = '\f'; break;
+							case 'a': data = '\a'; break;
+							case 'v': data = '\v'; break;
+							case '?': data = '?'; break;
+							case '0': data = 0; break;
+							case 'x': data = read_hex() << 4; data |= read_hex(); break;
+							default:
+							{
+								printf(__FUNCTION__"(): '%c' found after \\.\n", text[pos]);
+								throw pos;
+							}
+							}
+							pos++;
+						}
+						else if (data == '\n' || data == '\r')
+						{
+							printf(__FUNCTION__"(): end of line (char expected).\n");
+							throw pos;
+						}
+						res |= data << (count * 8);
+					}
+					else if (hex)
 					{
 						if (count > 16)
 						{
@@ -2672,7 +2791,7 @@ struct A256Machine
 							if (pos < len && text[pos] == 's')
 							{
 								pos++;
-								r |= 0x2000;
+								r |= 0x3000;
 							}
 							u64 num = read_num();
 							if (num > 15)
@@ -2680,7 +2799,7 @@ struct A256Machine
 								printf(__FUNCTION__"(): selector too big (0..15 expected).\n");
 								throw pos;
 							}
-							return r | 0x5000 | ((u16)num << 8);
+							return r | 0x4000 | ((u16)num << 8);
 						}
 						else if (pos + 1 < len && !strncmp(&text[pos], "ud", 2))
 						{
@@ -2704,7 +2823,7 @@ struct A256Machine
 							if (pos < len && text[pos] == 's')
 							{
 								pos++;
-								r |= 0x1000;
+								r |= 0x1800;
 							}
 							u64 num = read_num();
 							if (num > 7)
@@ -2712,7 +2831,7 @@ struct A256Machine
 								printf(__FUNCTION__"(): selector too big (0..7 expected).\n");
 								throw pos;
 							}
-							return r | 0x8800 | ((u16)num << 8);
+							return r | 0x8000 | ((u16)num << 8);
 						}
 						else if (pos + 1 < len && !strncmp(&text[pos], "fs", 2))
 						{
@@ -2724,24 +2843,32 @@ struct A256Machine
 							}
 							switch (text[pos])
 							{
-							case 'r': r |= 0x0000; break;
-							case 't': r |= 0x0800; break;
-							case 'f': r |= 0x1000; break;
-							case 'c': r |= 0x1800; break;
+							case 'r': r |= 0xa000; pos++; break;
+							case 't': r |= 0xa800; pos++; break;
+							case 'f': r |= 0xb000; pos++; break;
+							case 'c': r |= 0xb800; pos++; break;
+							case 's': r |= 0x8800; pos++; break;
 							default:
 							{
-								printf(__FUNCTION__"(): '%c' found (rounding mode expected).\n", text[pos]);
-								throw pos;
+								if (isdigit(text[pos]))
+								{
+									r |= 0x8000; // as "ud"/"sd"
+									break;
+								}
+								else
+								{
+									printf(__FUNCTION__"(): '%c' found (rounding mode expected).\n", text[pos]);
+									throw pos;
+								}
 							}
 							}
-							pos++;
 							u64 num = read_num();
 							if (num > 7)
 							{
 								printf(__FUNCTION__"(): selector too big (0..7 expected).\n");
 								throw pos;
 							}
-							return r | 0xa000 | ((u16)num << 8);
+							return r | ((u16)num << 8);
 						}
 						else if (pos + 1 < len && !strncmp(&text[pos], "uq", 2))
 						{
@@ -2765,7 +2892,7 @@ struct A256Machine
 							if (pos < len && text[pos] == 's')
 							{
 								pos++;
-								r |= 0x0800;
+								r |= 0x0c00;
 							}
 							u64 num = read_num();
 							if (num > 3)
@@ -2773,7 +2900,7 @@ struct A256Machine
 								printf(__FUNCTION__"(): selector too big (0..3 expected).\n");
 								throw pos;
 							}
-							return r | 0xc400 | ((u16)num << 8);
+							return r | 0xc000 | ((u16)num << 8);
 						}
 						else if (pos + 1 < len && !strncmp(&text[pos], "fd", 2))
 						{
@@ -2785,24 +2912,32 @@ struct A256Machine
 							}
 							switch (text[pos])
 							{
-							case 'r': r |= 0x0000; break;
-							case 't': r |= 0x0400; break;
-							case 'f': r |= 0x0800; break;
-							case 'c': r |= 0x0c00; break;
+							case 'r': r |= 0xd000; pos++; break;
+							case 't': r |= 0xd400; pos++; break;
+							case 'f': r |= 0xd800; pos++; break;
+							case 'c': r |= 0xdc00; pos++; break;
+							case 's': r |= 0xc400; pos++; break;
 							default:
 							{
-								printf(__FUNCTION__"(): '%c' found (rounding mode expected).\n", text[pos]);
-								throw pos;
+								if (isdigit(text[pos]))
+								{
+									r |= 0xc000; // as "uq"/"sq"
+									break;
+								}
+								else
+								{
+									printf(__FUNCTION__"(): '%c' found (rounding mode expected).\n", text[pos]);
+									throw pos;
+								}
 							}
 							}
-							pos++;
 							u64 num = read_num();
 							if (num > 3)
 							{
 								printf(__FUNCTION__"(): selector too big (0..3 expected).\n");
 								throw pos;
 							}
-							return r | 0xd000 | ((u16)num << 8);
+							return r | ((u16)num << 8);
 						}
 						else if (pos + 1 < len && !strncmp(&text[pos], "dq", 2))
 						{
@@ -3000,10 +3135,10 @@ struct A256Machine
 			u8 read_sign1()
 			{
 				u8 res = 0;
-				if (pos < len && text[pos] == '-')
+				if (pos + 2 < len && !strncmp(&text[pos], "neg", 3))
 				{
 					res |= 1;
-					pos++;
+					pos += 3;
 				}
 				if (pos + 2 < len && !strncmp(&text[pos], "abs", 3))
 				{
