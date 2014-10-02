@@ -42,8 +42,8 @@
 11101110 - zero-extend qwords to double qwords ($00.zxqdq)
 11101111 - sign-extend qwords to double qwords ($00.sxqdq)
 
-11110000 - convert from single with saturation ($00.getfs)
-11110001 - convert from double with saturation ($00.getfd)
+11110000 - convert from single with saturation ($00.getfss)
+11110001 - convert from double with saturation ($00.getfds)
 11110010 - convert from unsigned byte with saturation ($00.getub)
 11110011 - convert from signed byte with saturation ($00.getsb)
 11110100 - convert from unsigned word with saturation ($00.getuw)

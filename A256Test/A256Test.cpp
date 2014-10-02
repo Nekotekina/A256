@@ -3,6 +3,8 @@
 
 #include "stdafx.h"
 #include <string>
+#include <sstream>
+#include <iomanip>
 #include <vector>
 #include <algorithm>
 #include <fstream>
@@ -16,7 +18,7 @@ A256Machine vm;
 int _tmain(int argc, _TCHAR* argv[])
 {
 	std::string text =
-		"setd $01.ud0, 0x02ffffff; initialize counter\n"
+		"setd $01.ud0, 0x02;ffffff; initialize counter\n"
 		"@SimpleLoop:\n"
 		"subd $01.ud0, $01.ud0, 1; decrement\n"
 		"jrnz $01.ud0, @SimpleLoop; check counter\n"
@@ -25,6 +27,7 @@ int _tmain(int argc, _TCHAR* argv[])
 		"setd $01.ud2, 15; set text length\n"
 		"setd $01.ud3, 0; fix text length\n"
 		"stop $01, 12; print text\n"
+		"stop 0, 14\n"
 		"stop $00, 0\n"
 		"@HelloWorld:\n"
 		"d 'Hello, w'\n"

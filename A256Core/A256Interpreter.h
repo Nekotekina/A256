@@ -180,6 +180,13 @@ struct A256Machine
 			}
 			break;
 		}
+		case 0x0e: // test
+		{
+			A256Reg arg1 = reg[op.op1i.r].bsc1<f64>(op.op1i.r_mask, op.op1i.r);
+			printf("[$%.2X%s].fd0 = %f; acos = %f; asin = %f\n", op.op1i.r, arg1.bsc1_fmt(op.op1i.r_mask).c_str(),
+				arg1._fd[0], acos(arg1._fd[0]), asin(arg1._fd[0]));
+			break;
+		}
 		default:
 		{
 			throw fmt::format(__FUNCTION__"(): invalid code 0x%x.", code);
@@ -734,6 +741,102 @@ struct A256Machine
 	void mulq()
 	{
 		mul_<s64>();
+	}
+
+	void mulhsb()
+	{
+		A256Reg arg1 = reg[op.op3.a].bsc1<s8>(op.op3.a_mask, op.op3.a);
+		A256Reg arg2 = reg[op.op3.b].bsc1<s8>(op.op3.b_mask, op.op3.b);
+		A256Reg result;
+		for (u32 i = 0; i < 32; i++)
+		{
+			result.get<s8>(i) = ((s16)(arg1.get<s8>(i)) * (s16)(arg2.get<s8>(i))) >> 8;
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void mulhsw()
+	{
+		A256Reg arg1 = reg[op.op3.a].bsc1<s16>(op.op3.a_mask, op.op3.a);
+		A256Reg arg2 = reg[op.op3.b].bsc1<s16>(op.op3.b_mask, op.op3.b);
+		A256Reg result;
+		for (u32 i = 0; i < 16; i++)
+		{
+			result.get<s16>(i) = ((s32)(arg1.get<s16>(i)) * (s32)(arg2.get<s16>(i))) >> 16;
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void mulhsd()
+	{
+		A256Reg arg1 = reg[op.op3.a].bsc1<s32>(op.op3.a_mask, op.op3.a);
+		A256Reg arg2 = reg[op.op3.b].bsc1<s32>(op.op3.b_mask, op.op3.b);
+		A256Reg result;
+		for (u32 i = 0; i < 8; i++)
+		{
+			result.get<s32>(i) = ((s64)(arg1.get<s32>(i)) * (s64)(arg2.get<s32>(i))) >> 32;
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void mulhsq()
+	{
+		A256Reg arg1 = reg[op.op3.a].bsc1<s64>(op.op3.a_mask, op.op3.a);
+		A256Reg arg2 = reg[op.op3.b].bsc1<s64>(op.op3.b_mask, op.op3.b);
+		A256Reg result;
+		for (u32 i = 0; i < 4; i++)
+		{
+			result.get<s64>(i) = __mulh(arg1.get<s64>(i), arg2.get<s64>(i));
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void mulhub()
+	{
+		A256Reg arg1 = reg[op.op3.a].bsc1<u8>(op.op3.a_mask, op.op3.a);
+		A256Reg arg2 = reg[op.op3.b].bsc1<u8>(op.op3.b_mask, op.op3.b);
+		A256Reg result;
+		for (u32 i = 0; i < 32; i++)
+		{
+			result.get<u8>(i) = ((u16)(arg1.get<u8>(i)) * (u16)(arg2.get<u8>(i))) >> 8;
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void mulhuw()
+	{
+		A256Reg arg1 = reg[op.op3.a].bsc1<u16>(op.op3.a_mask, op.op3.a);
+		A256Reg arg2 = reg[op.op3.b].bsc1<u16>(op.op3.b_mask, op.op3.b);
+		A256Reg result;
+		for (u32 i = 0; i < 16; i++)
+		{
+			result.get<u16>(i) = ((u32)(arg1.get<u16>(i)) * (u32)(arg2.get<u16>(i))) >> 16;
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void mulhud()
+	{
+		A256Reg arg1 = reg[op.op3.a].bsc1<u32>(op.op3.a_mask, op.op3.a);
+		A256Reg arg2 = reg[op.op3.b].bsc1<u32>(op.op3.b_mask, op.op3.b);
+		A256Reg result;
+		for (u32 i = 0; i < 8; i++)
+		{
+			result.get<u32>(i) = ((u64)(arg1.get<u32>(i)) * (u64)(arg2.get<u32>(i))) >> 32;
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
+	}
+
+	void mulhuq()
+	{
+		A256Reg arg1 = reg[op.op3.a].bsc1<u64>(op.op3.a_mask, op.op3.a);
+		A256Reg arg2 = reg[op.op3.b].bsc1<u64>(op.op3.b_mask, op.op3.b);
+		A256Reg result;
+		for (u32 i = 0; i < 4; i++)
+		{
+			result.get<u64>(i) = __umulh(arg1.get<u64>(i), arg2.get<u64>(i));
+		}
+		RSAVE1(reg[op.op3.r], result, op.op3.r_mask);
 	}
 
 	template<typename T>
@@ -2029,14 +2132,15 @@ struct A256Machine
 			REG(0x0036, muld, itOp3_m1_bsc2);
 			REG(0x0037, mulq, itOp3_m1_bsc2);
 
-			// 0x0038
-			// 0x0039
-			// 0x003a
-			// 0x003b
-			// 0x003c
-			// 0x003d
-			// 0x003e
-			// 0x003f
+			REG(0x0038, mulhub, itOp3_m1_bsc2);
+			REG(0x0039, mulhuw, itOp3_m1_bsc2);
+			REG(0x003a, mulhud, itOp3_m1_bsc2);
+			REG(0x003b, mulhuq, itOp3_m1_bsc2);
+
+			REG(0x003c, mulhsb, itOp3_m1_bsc2);
+			REG(0x003d, mulhsw, itOp3_m1_bsc2);
+			REG(0x003e, mulhsd, itOp3_m1_bsc2);
+			REG(0x003f, mulhsq, itOp3_m1_bsc2);
 
 			REG(0x0040, mafs, itOp4_sign4);
 			REG(0x0041, mafd, itOp4_sign4);
@@ -2047,15 +2151,15 @@ struct A256Machine
 			REG(0x0046, mad, itOp4_sign4);
 			REG(0x0047, maq, itOp4_sign4);
 
-			REG(0x0048, call, itOp1_m1_imm32);
-			// 0x0049
-			// 0x004a
-			// 0x004b
+			/*REG(0x0048, mahub, itOp4_sign4);
+			REG(0x0049, mahuw, itOp4_sign4);
+			REG(0x004a, mahud, itOp4_sign4);
+			REG(0x004b, mahuq, itOp4_sign4);
 
-			REG(0x004c, ret, itOp1_m1_imm32);
-			// 0x004d
-			// 0x004e
-			// 0x004f
+			REG(0x004c, mahsb, itOp4_sign4);
+			REG(0x004d, mahsw, itOp4_sign4);
+			REG(0x004e, mahsd, itOp4_sign4);
+			REG(0x004f, mahsq, itOp4_sign4);*/
 
 			REG(0x0050, andfs, itOp3_m1_bsc2);
 			REG(0x0051, andfd, itOp3_m1_bsc2);
@@ -2066,7 +2170,7 @@ struct A256Machine
 			REG(0x0056, andd, itOp3_m1_bsc2);
 			REG(0x0057, andq, itOp3_m1_bsc2);
 
-			// 0x0058
+			REG(0x0058, call, itOp1_m1_imm32);
 			// 0x0059
 			REG(0x005a, pushd, itOp3_m1_bsc2);
 			REG(0x005b, pushq, itOp3_m1_bsc2);
@@ -2084,7 +2188,7 @@ struct A256Machine
 			REG(0x0066, ord, itOp3_m1_bsc2);
 			REG(0x0067, orq, itOp3_m1_bsc2);
 
-			// 0x0068
+			REG(0x0068, ret, itOp1_m1_imm32);
 			// 0x0069
 			REG(0x006a, popd, itOp3_m2_bsc1);
 			REG(0x006b, popq, itOp3_m2_bsc1);
@@ -2462,7 +2566,8 @@ struct A256Machine
 				case '8':
 				case '9':
 				{
-					res = text[pos] - '0';
+					const u8 v = text[pos] - '0';
+					res = v;
 					break;
 				}
 				case 'A':
@@ -2544,7 +2649,7 @@ struct A256Machine
 							case 'v': data = '\v'; break;
 							case '?': data = '?'; break;
 							case '0': data = 0; break;
-							case 'x': data = read_hex() << 4; data |= read_hex(); break;
+							case 'x': data = (u64)read_hex() << 4; data |= read_hex(); break;
 							default:
 							{
 								printf(__FUNCTION__"(): '%c' found after \\.\n", text[pos]);
@@ -3020,14 +3125,14 @@ struct A256Machine
 							pos += 5;
 							return r | 0xef00;
 						}
-						else if (pos + 4 < len && !strncmp(&text[pos], "getfs", 5))
+						else if (pos + 5 < len && !strncmp(&text[pos], "getfss", 6))
 						{
-							pos += 5;
+							pos += 6;
 							return r | 0xf000;
 						}
-						else if (pos + 4 < len && !strncmp(&text[pos], "getfd", 5))
+						else if (pos + 5 < len && !strncmp(&text[pos], "getfds", 6))
 						{
-							pos += 5;
+							pos += 6;
 							return r | 0xf100;
 						}
 						else if (pos + 4 < len && !strncmp(&text[pos], "getub", 5))
